@@ -170,10 +170,13 @@ function App() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      setLogs(parsed.logs || emptyLogs());
-      if (parsed.selectedAquarium) {
-        setSelectedAquarium(parsed.selectedAquarium);
-      }
+setLogs(parsed.logs || emptyLogs());
+if (parsed.dosage) {
+  setDosage(parsed.dosage);
+}
+if (parsed.selectedAquarium) {
+  setSelectedAquarium(parsed.selectedAquarium);
+}
       setSyncStatus("Lokale Daten geladen …");
     } catch (error) {
       console.error("Fehler beim Laden aus localStorage", error);
@@ -181,60 +184,71 @@ function App() {
   }, []);
 
   useEffect(() => {
-    async function loadCloudState() {
-      try {
-        const { data, error } = await supabase
-          .from("app_state")
-          .select("id, data")
-          .eq("id", CLOUD_ROW_ID)
-          .maybeSingle();
+  async function loadCloudState() {
+    try {
+      const { data, error } = await supabase
+        .from("app_state")
+        .select("id, data")
+        .eq("id", CLOUD_ROW_ID)
+        .maybeSingle();
 
-        if (error) {
-          console.error(error);
-          setSyncStatus("Cloud-Fehler beim Laden");
-          setCloudReady(true);
-          setHasLoadedCloud(true);
-          return;
-        }
-
-        if (data?.data) {
-          const cloudData = data.data as CloudState;
-
-          setLogs(cloudData.logs || emptyLogs());
-          if (cloudData.selectedAquarium) {
-            setSelectedAquarium(cloudData.selectedAquarium);
-          }
-
-          localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({
-              selectedAquarium: cloudData.selectedAquarium || "aq200",
-              logs: cloudData.logs || emptyLogs(),
-            })
-          );
-
-          setSyncStatus("Cloud-Daten geladen");
-        } else {
-          setSyncStatus("Noch keine Cloud-Daten – lokale Daten aktiv");
-        }
-      } catch (error) {
+      if (error) {
         console.error(error);
-        setSyncStatus("Cloud nicht erreichbar");
-      } finally {
+        setSyncStatus("Cloud-Fehler beim Laden");
         setCloudReady(true);
         setHasLoadedCloud(true);
+        return;
       }
-    }
 
-    loadCloudState();
-  }, []);
+      if (data?.data) {
+        const cloudData = data.data as CloudState & {
+          dosage?: Record<string, { ferropol: string; npk: string; tages: string }>;
+        };
+
+        setLogs(cloudData.logs || emptyLogs());
+
+        if (cloudData.dosage) {
+          setDosage(cloudData.dosage);
+        }
+
+        if (cloudData.selectedAquarium) {
+          setSelectedAquarium(cloudData.selectedAquarium);
+        }
+
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            selectedAquarium: cloudData.selectedAquarium || "aq200",
+            logs: cloudData.logs || emptyLogs(),
+            dosage: cloudData.dosage || {
+              aq200: { ferropol: "", npk: "", tages: "" },
+              aq126: { ferropol: "", npk: "", tages: "" },
+            },
+          })
+        );
+
+        setSyncStatus("Cloud-Daten geladen");
+      } else {
+        setSyncStatus("Noch keine Cloud-Daten – lokale Daten aktiv");
+      }
+    } catch (error) {
+      console.error(error);
+      setSyncStatus("Cloud nicht erreichbar");
+    } finally {
+      setCloudReady(true);
+      setHasLoadedCloud(true);
+    }
+  }
+
+  loadCloudState();
+}, []);
 
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ selectedAquarium, logs })
+      JSON.stringify({ selectedAquarium, logs, dosage })
     );
-  }, [selectedAquarium, logs]);
+  }, [selectedAquarium, logs, dosage]);
 
   useEffect(() => {
     if (!cloudReady || !hasLoadedCloud) return;
@@ -243,10 +257,13 @@ function App() {
       try {
         setSyncStatus("Synchronisiert …");
 
-        const payload: CloudState = {
-          selectedAquarium,
-          logs,
-        };
+        const payload: CloudState & {
+  dosage: Record<string, { ferropol: string; npk: string; tages: string }>;
+} = {
+  selectedAquarium,
+  logs,
+  dosage,
+};
 
         const { error } = await supabase.from("app_state").upsert(
           {
@@ -271,7 +288,7 @@ function App() {
     }, 500);
 
     return () => window.clearTimeout(timeout);
-  }, [selectedAquarium, logs, cloudReady, hasLoadedCloud]);
+  }, [selectedAquarium, logs, dosage, cloudReady, hasLoadedCloud]);
 
   useEffect(() => {
     setFertilizerForm((prev) => ({ ...prev, aquariumId: selectedAquarium }));
@@ -283,6 +300,21 @@ function App() {
 
   const aquariumName =
     AQUARIUMS.find((a) => a.id === selectedAquarium)?.name || "Aquarium";
+  const activeDose = dosage[selectedAquarium] || {
+  ferropol: "",
+  npk: "",
+  tages: "",
+};
+
+function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
+  setDosage((prev) => ({
+    ...prev,
+    [selectedAquarium]: {
+      ...prev[selectedAquarium],
+      [field]: value,
+    },
+  }));
+}
 
   const fertilizerLogs = useMemo(
     () =>
@@ -479,11 +511,12 @@ function App() {
 
   function exportBackup() {
     const backup = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      selectedAquarium,
-      logs,
-    };
+  version: 1,
+  exportedAt: new Date().toISOString(),
+  selectedAquarium,
+  logs,
+  dosage,
+};
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
       type: "application/json",
     });
@@ -515,6 +548,7 @@ function App() {
           waterChange: data.logs.waterChange || [],
         });
         if (data.selectedAquarium) setSelectedAquarium(data.selectedAquarium);
+        if (data.dosage) setDosage(data.dosage);
         alert("Backup erfolgreich importiert.");
       } catch {
         alert("Die Datei konnte nicht importiert werden.");
@@ -708,6 +742,48 @@ function App() {
         </div>
 
         <div style={styles.grid2}>
+          <section style={styles.card}>
+  <div style={styles.cardTitle}>
+    <FlaskConical size={18} /> Standard-Dosierung
+  </div>
+
+  <div style={styles.tipBox}>
+    Hier kannst du dir merken, wieviel du normalerweise in dieses Aquarium dosierst.
+    Das ist nur ein Merkzettel und unabhängig von den täglichen Einträgen.
+  </div>
+
+  <div style={styles.formGrid}>
+    <label style={styles.label}>
+      Ferropol
+      <input
+        style={styles.input}
+        placeholder="z. B. 10 ml"
+        value={activeDose.ferropol}
+        onChange={(e) => updateDose("ferropol", e.target.value)}
+      />
+    </label>
+
+    <label style={styles.label}>
+      NPK
+      <input
+        style={styles.input}
+        placeholder="z. B. 8 ml"
+        value={activeDose.npk}
+        onChange={(e) => updateDose("npk", e.target.value)}
+      />
+    </label>
+
+    <label style={styles.label}>
+      Tagesdünger
+      <input
+        style={styles.input}
+        placeholder="z. B. 5 ml"
+        value={activeDose.tages}
+        onChange={(e) => updateDose("tages", e.target.value)}
+      />
+    </label>
+  </div>
+</section>
           <section style={styles.card}>
             <div style={styles.sectionHead}>
               <div style={styles.cardTitle}>
