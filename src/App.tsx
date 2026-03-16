@@ -19,6 +19,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { createClient } from "@supabase/supabase-js";
 
 type Aquarium = {
   id: string;
@@ -57,6 +58,11 @@ type Logs = {
   waterChange: WaterChangeLog[];
 };
 
+type CloudState = {
+  selectedAquarium: string;
+  logs: Logs;
+};
+
 const AQUARIUMS: Aquarium[] = [
   { id: "aq200", name: "Aquarium 200 L", liters: 200 },
   { id: "aq126", name: "Aquarium 126 L", liters: 126 },
@@ -82,7 +88,20 @@ const WEEKDAYS = [
   "Samstag",
 ];
 
-const STORAGE_KEY = "aquarium-logbuch-v6";
+const STORAGE_KEY = "aquarium-logbuch-v7";
+const SUPABASE_URL = "https://sgaqakrwhtwjuyywkhor.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNnYXFha3J3aHR3anV5eXdraG9yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODIwNDEsImV4cCI6MjA4OTI1ODA0MX0.bUd2adZkzKKYSvxAQqeqwQEnaY85PCXCgZ5bkdjO4sM";
+const CLOUD_ROW_ID = "shared";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function emptyLogs(): Logs {
+  return {
+    fertilizer: [],
+    water: [],
+    waterChange: [],
+  };
+}
 
 function toLocalISO(date: Date): string {
   const year = date.getFullYear();
@@ -115,11 +134,11 @@ function uid(): string {
 function App() {
   const [selectedAquarium, setSelectedAquarium] = useState<string>("aq200");
   const [timeFilter, setTimeFilter] = useState<string>("all");
-  const [logs, setLogs] = useState<Logs>({
-    fertilizer: [],
-    water: [],
-    waterChange: [],
-  });
+  const [logs, setLogs] = useState<Logs>(emptyLogs());
+  const [cloudReady, setCloudReady] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<string>("Cloud wird verbunden …");
+  const [hasLoadedCloud, setHasLoadedCloud] = useState<boolean>(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [fertilizerForm, setFertilizerForm] = useState({
@@ -143,13 +162,63 @@ function App() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      setLogs(parsed.logs || { fertilizer: [], water: [], waterChange: [] });
+      setLogs(parsed.logs || emptyLogs());
       if (parsed.selectedAquarium) {
         setSelectedAquarium(parsed.selectedAquarium);
       }
+      setSyncStatus("Lokale Daten geladen …");
     } catch (error) {
       console.error("Fehler beim Laden aus localStorage", error);
     }
+  }, []);
+
+  useEffect(() => {
+    async function loadCloudState() {
+      try {
+        const { data, error } = await supabase
+          .from("app_state")
+          .select("id, data")
+          .eq("id", CLOUD_ROW_ID)
+          .maybeSingle();
+
+        if (error) {
+          console.error(error);
+          setSyncStatus("Cloud-Fehler beim Laden");
+          setCloudReady(true);
+          setHasLoadedCloud(true);
+          return;
+        }
+
+        if (data?.data) {
+          const cloudData = data.data as CloudState;
+
+          setLogs(cloudData.logs || emptyLogs());
+          if (cloudData.selectedAquarium) {
+            setSelectedAquarium(cloudData.selectedAquarium);
+          }
+
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({
+              selectedAquarium: cloudData.selectedAquarium || "aq200",
+              logs: cloudData.logs || emptyLogs(),
+            })
+          );
+
+          setSyncStatus("Cloud-Daten geladen");
+        } else {
+          setSyncStatus("Noch keine Cloud-Daten – lokale Daten aktiv");
+        }
+      } catch (error) {
+        console.error(error);
+        setSyncStatus("Cloud nicht erreichbar");
+      } finally {
+        setCloudReady(true);
+        setHasLoadedCloud(true);
+      }
+    }
+
+    loadCloudState();
   }, []);
 
   useEffect(() => {
@@ -158,6 +227,43 @@ function App() {
       JSON.stringify({ selectedAquarium, logs })
     );
   }, [selectedAquarium, logs]);
+
+  useEffect(() => {
+    if (!cloudReady || !hasLoadedCloud) return;
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        setSyncStatus("Synchronisiert …");
+
+        const payload: CloudState = {
+          selectedAquarium,
+          logs,
+        };
+
+        const { error } = await supabase.from("app_state").upsert(
+          {
+            id: CLOUD_ROW_ID,
+            data: payload,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+
+        if (error) {
+          console.error(error);
+          setSyncStatus("Cloud-Fehler beim Speichern");
+          return;
+        }
+
+        setSyncStatus("Cloud-Sync aktiv");
+      } catch (error) {
+        console.error(error);
+        setSyncStatus("Cloud nicht erreichbar");
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [selectedAquarium, logs, cloudReady, hasLoadedCloud]);
 
   useEffect(() => {
     setFertilizerForm((prev) => ({ ...prev, aquariumId: selectedAquarium }));
@@ -341,27 +447,27 @@ function App() {
   }
 
   function removeLog(type: keyof Logs, id: string) {
-  setLogs((prev) => {
-    if (type === "fertilizer") {
+    setLogs((prev) => {
+      if (type === "fertilizer") {
+        return {
+          ...prev,
+          fertilizer: prev.fertilizer.filter((entry) => entry.id !== id),
+        };
+      }
+
+      if (type === "water") {
+        return {
+          ...prev,
+          water: prev.water.filter((entry) => entry.id !== id),
+        };
+      }
+
       return {
         ...prev,
-        fertilizer: prev.fertilizer.filter((entry) => entry.id !== id),
+        waterChange: prev.waterChange.filter((entry) => entry.id !== id),
       };
-    }
-
-    if (type === "water") {
-      return {
-        ...prev,
-        water: prev.water.filter((entry) => entry.id !== id),
-      };
-    }
-
-    return {
-      ...prev,
-      waterChange: prev.waterChange.filter((entry) => entry.id !== id),
-    };
-  });
-}
+    });
+  }
 
   function exportBackup() {
     const backup = {
@@ -586,6 +692,9 @@ function App() {
             <div style={styles.tipBox}>
               Tipp: Auf dem Handy als Startbildschirm-App speichern. Über den
               Backup-Export kannst du deine Daten sichern.
+            </div>
+            <div style={styles.syncBox}>
+              <strong>Sync:</strong> {syncStatus}
             </div>
           </section>
         </div>
@@ -1213,6 +1322,14 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     color: "#334155",
     background: "#f8fafc",
+  },
+  syncBox: {
+    border: "1px solid #cbd5e1",
+    borderRadius: 14,
+    padding: 12,
+    color: "#334155",
+    background: "#eef2ff",
+    fontSize: 14,
   },
   formGrid: {
     display: "grid",
