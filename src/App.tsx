@@ -135,6 +135,14 @@ function App() {
   const [selectedAquarium, setSelectedAquarium] = useState<string>("aq200");
   const [timeFilter, setTimeFilter] = useState<string>("all");
   const [logs, setLogs] = useState<Logs>(emptyLogs());
+  const [dosage, setDosage] = useState<Record<string,{
+  ferropol:string;
+  npk:string;
+  tages:string;
+}>>({
+  aq200:{ferropol:"",npk:"",tages:""},
+  aq126:{ferropol:"",npk:"",tages:""}
+});
   const [cloudReady, setCloudReady] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<string>("Cloud wird verbunden …");
   const [hasLoadedCloud, setHasLoadedCloud] = useState<boolean>(false);
