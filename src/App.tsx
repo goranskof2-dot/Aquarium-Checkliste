@@ -341,11 +341,27 @@ function App() {
   }
 
   function removeLog(type: keyof Logs, id: string) {
-    setLogs((prev) => ({
+  setLogs((prev) => {
+    if (type === "fertilizer") {
+      return {
+        ...prev,
+        fertilizer: prev.fertilizer.filter((entry) => entry.id !== id),
+      };
+    }
+
+    if (type === "water") {
+      return {
+        ...prev,
+        water: prev.water.filter((entry) => entry.id !== id),
+      };
+    }
+
+    return {
       ...prev,
-      [type]: prev[type].filter((entry: any) => entry.id !== id),
-    }));
-  }
+      waterChange: prev.waterChange.filter((entry) => entry.id !== id),
+    };
+  });
+}
 
   function exportBackup() {
     const backup = {
