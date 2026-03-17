@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bell,
   CalendarDays,
   Download,
   Droplets,
@@ -7,6 +8,7 @@ import {
   LineChart as LineChartIcon,
   Plus,
   RefreshCw,
+  Sparkles,
   Trash2,
   Upload,
   Waves,
@@ -103,11 +105,12 @@ const WEEKDAYS = [
   "Samstag",
 ];
 
-const STORAGE_KEY = "aquarium-logbuch-v8";
+const STORAGE_KEY = "aquarium-logbuch-v9";
 const SUPABASE_URL = "https://sgaqakrwhtwjuyywkhor.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNnYXFha3J3aHR3anV5eXdraG9yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODIwNDEsImV4cCI6MjA4OTI1ODA0MX0.bUd2adZkzKKYSvxAQqeqwQEnaY85PCXCgZ5bkdjO4sM";
 const CLOUD_ROW_ID = "shared";
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function emptyLogs(): Logs {
@@ -128,6 +131,7 @@ function defaultDosage(aquariums: Aquarium[]): DosageMap {
 function mergeDosage(aquariums: Aquarium[], incoming?: DosageMap): DosageMap {
   const base = defaultDosage(aquariums);
   if (!incoming) return base;
+
   return aquariums.reduce<DosageMap>((acc, aq) => {
     acc[aq.id] = incoming[aq.id] || base[aq.id];
     return acc;
@@ -166,16 +170,27 @@ export default function App() {
   const [selectedAquarium, setSelectedAquarium] = useState<string>("aq200");
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [timeFilter, setTimeFilter] = useState<string>("all");
+
   const [aquariums, setAquariums] = useState<Aquarium[]>(INITIAL_AQUARIUMS);
   const [logs, setLogs] = useState<Logs>(emptyLogs());
   const [dosage, setDosage] = useState<DosageMap>(
     defaultDosage(INITIAL_AQUARIUMS)
   );
+
   const [cloudReady, setCloudReady] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<string>(
     "Cloud wird verbunden …"
   );
   const [hasLoadedCloud, setHasLoadedCloud] = useState<boolean>(false);
+
+  const [showSplash, setShowSplash] = useState(true);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | "unsupported"
+  >(
+    typeof window !== "undefined" && "Notification" in window
+      ? Notification.permission
+      : "unsupported"
+  );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -194,6 +209,58 @@ export default function App() {
     ph: "",
     o2: "",
   });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setShowSplash(false);
+    }, 2600);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch((err) => {
+        console.error("Service Worker konnte nicht registriert werden:", err);
+      });
+    }
+  }, []);
+
+  async function enableNotifications() {
+    if (!("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      alert(
+        "Benachrichtigungen werden auf diesem Gerät oder Browser nicht unterstützt."
+      );
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+
+    if (permission === "granted") {
+      alert("Benachrichtigungen sind aktiviert.");
+    } else if (permission === "denied") {
+      alert("Benachrichtigungen wurden blockiert.");
+    }
+  }
+
+  function sendTestNotification() {
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+      alert("Bitte zuerst Benachrichtigungen aktivieren.");
+      return;
+    }
+
+    new Notification("Aquarium Logbuch", {
+      body: "Zeit für Dünger oder Wasserwechsel 🌊",
+    });
+  }
 
   async function refreshCloudState() {
     try {
@@ -247,9 +314,10 @@ export default function App() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw);
 
+      const parsed = JSON.parse(raw);
       const savedAquariums: Aquarium[] = parsed.aquariums || INITIAL_AQUARIUMS;
+
       setAquariums(savedAquariums);
       setLogs(parsed.logs || emptyLogs());
       setDosage(mergeDosage(savedAquariums, parsed.dosage));
@@ -422,10 +490,13 @@ export default function App() {
   const no3TrendText = useMemo(() => {
     if (waterLogs.length < 2)
       return "Noch nicht genug Messungen für einen Trend.";
+
     const sorted = [...waterLogs].sort((a, b) => a.date.localeCompare(b.date));
     const last = toNumber(sorted[sorted.length - 1]?.no3);
     const prev = toNumber(sorted[sorted.length - 2]?.no3);
+
     if (last == null || prev == null) return "Nitrat-Trend noch unklar.";
+
     const diff = last - prev;
     if (diff >= 10) return `NO3 deutlich gestiegen (+${diff}).`;
     if (diff >= 3) return `NO3 leicht gestiegen (+${diff}).`;
@@ -459,9 +530,11 @@ export default function App() {
       const date = new Date(monday);
       date.setDate(monday.getDate() + index);
       date.setHours(12, 0, 0, 0);
+
       const iso = toLocalISO(date);
       const weekday = WEEKDAYS[date.getDay()];
       const plan = [...(FERTILIZER_PLAN[date.getDay()] || [])];
+
       if (date.getDay() === 1) plan.push("Wasserwechsel");
 
       const dayFertilizers = logs.fertilizer.filter(
@@ -493,13 +566,17 @@ export default function App() {
 
   const chartData = useMemo(() => {
     const now = new Date();
+
     const filtered = waterLogs.filter((entry) => {
       if (timeFilter === "all") return true;
+
       const d = new Date(`${entry.date}T00:00:00`);
       const past = new Date();
+
       if (timeFilter === "30") past.setDate(now.getDate() - 30);
       if (timeFilter === "90") past.setDate(now.getDate() - 90);
       if (timeFilter === "365") past.setDate(now.getDate() - 365);
+
       return d >= past;
     });
 
@@ -544,6 +621,7 @@ export default function App() {
 
   function addFertilizerLog() {
     if (!fertilizerForm.amount.trim()) return;
+
     const entry: FertilizerLog = {
       id: uid(),
       aquariumId: fertilizerForm.aquariumId,
@@ -551,6 +629,7 @@ export default function App() {
       fertilizer: fertilizerForm.fertilizer,
       amount: fertilizerForm.amount,
     };
+
     setLogs((prev) => ({ ...prev, fertilizer: [entry, ...prev.fertilizer] }));
     setFertilizerForm((prev) => ({ ...prev, amount: "" }));
   }
@@ -563,6 +642,7 @@ export default function App() {
       fertilizer,
       amount: "erledigt",
     };
+
     setLogs((prev) => ({ ...prev, fertilizer: [entry, ...prev.fertilizer] }));
   }
 
@@ -576,6 +656,7 @@ export default function App() {
       ph: waterForm.ph,
       o2: waterForm.o2,
     };
+
     setLogs((prev) => ({ ...prev, water: [entry, ...prev.water] }));
     setWaterForm((prev) => ({ ...prev, no3: "", no2: "", ph: "", o2: "" }));
   }
@@ -587,6 +668,7 @@ export default function App() {
       date: todayISO(),
       amount: "erledigt",
     };
+
     setLogs((prev) => ({ ...prev, waterChange: [entry, ...prev.waterChange] }));
   }
 
@@ -622,9 +704,11 @@ export default function App() {
       dosage,
       aquariums,
     };
+
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
       type: "application/json",
     });
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -660,32 +744,153 @@ export default function App() {
         setDosage(mergeDosage(importedAquariums, data.dosage));
 
         if (data.selectedAquarium) setSelectedAquarium(data.selectedAquarium);
+
         alert("Backup erfolgreich importiert.");
       } catch {
         alert("Die Datei konnte nicht importiert werden.");
       }
     };
+
     reader.readAsText(file);
     event.target.value = "";
+  }
+
+  function renderSplash() {
+    const fish = Array.from({ length: 20 }).map((_, index) => {
+      const top = 8 + (index % 10) * 7.5;
+      const delay = index * 0.12;
+      const duration = 2.7 + (index % 5) * 0.35;
+      const scale = 0.72 + (index % 4) * 0.12;
+
+      return (
+        <div
+          key={index}
+          style={{
+            ...styles.splashFish,
+            top: `${top}%`,
+            animationDelay: `${delay}s`,
+            animationDuration: `${duration}s`,
+            opacity: 0.9 - (index % 4) * 0.1,
+            ["--fish-scale" as any]: String(scale),
+          }}
+        >
+          <div style={styles.splashFishBody} />
+          <div style={styles.splashFishTail} />
+        </div>
+      );
+    });
+
+    return (
+      <div style={styles.splashOverlay}>
+        <div style={styles.splashGlowA} />
+        <div style={styles.splashGlowB} />
+
+        <div style={styles.bubbleLayer}>
+          {Array.from({ length: 16 }).map((_, i) => (
+            <span
+              key={i}
+              style={{
+                ...styles.bubble,
+                left: `${6 + i * 6}%`,
+                animationDelay: `${i * 0.18}s`,
+                animationDuration: `${3.2 + (i % 4) * 0.6}s`,
+              }}
+            />
+          ))}
+        </div>
+
+        <div style={styles.fishLane}>{fish}</div>
+
+        <div style={styles.splashCenter}>
+          <div style={styles.splashBadge}>AQUARIUM LOGBUCH</div>
+          <h1 style={styles.splashTitle}>Dein Becken. Dein Rhythmus.</h1>
+          <p style={styles.splashText}>
+            Pflege, Wasserwerte und Dünger in einer ruhigen, modernen Ansicht.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   function renderDashboard() {
     return (
       <div style={styles.screenGrid}>
+        <section style={styles.heroCard}>
+          <div style={styles.heroTop}>
+            <div>
+              <div style={styles.eyebrow}>Heute im Fokus</div>
+              <div style={styles.heroTitle}>{aquariumName}</div>
+              <div style={styles.heroSubtitle}>
+                {WEEKDAYS[today.getDay()]} · {today.toLocaleDateString("de-DE")}
+              </div>
+            </div>
+            <div style={styles.heroOrb}>
+              <Droplets size={26} />
+            </div>
+          </div>
+
+          <div style={styles.badgeRow}>
+            {tasksToday.length === 0 ? (
+              <span style={styles.badge}>Keine Aufgaben</span>
+            ) : (
+              tasksToday.map((item) => (
+                <span key={item} style={styles.badgePrimary}>
+                  {item}
+                </span>
+              ))
+            )}
+          </div>
+
+          <div style={styles.heroActionGrid}>
+            <button
+              style={styles.primaryButton}
+              onClick={() => quickLogToday("NPK")}
+            >
+              NPK erledigt
+            </button>
+            <button
+              style={styles.primaryButton}
+              onClick={() => quickLogToday("Ferropol")}
+            >
+              Ferropol erledigt
+            </button>
+            <button
+              style={styles.primaryButton}
+              onClick={() => quickLogToday("Tagesdünger")}
+            >
+              Tagesdünger erledigt
+            </button>
+            {today.getDay() === 1 && (
+              <button
+                style={styles.primaryButton}
+                onClick={quickLogWaterChange}
+              >
+                Wasserwechsel erledigt
+              </button>
+            )}
+          </div>
+        </section>
+
         <section style={styles.card}>
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Dashboard
           </div>
+
           <div style={styles.tipBox}>
             <div style={styles.valueLabel}>Heute zu tun</div>
             <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-              {tasksToday.map((task) => (
-                <div key={task} style={styles.taskRow}>
-                  • {task}
-                </div>
-              ))}
+              {tasksToday.length === 0 ? (
+                <div style={styles.taskRow}>Heute ist alles ruhig 🌿</div>
+              ) : (
+                tasksToday.map((task) => (
+                  <div key={task} style={styles.taskRow}>
+                    • {task}
+                  </div>
+                ))
+              )}
             </div>
           </div>
+
           <div style={styles.infoRow}>
             <span>Letzter Wasserwechsel</span>
             <strong>
@@ -694,6 +899,7 @@ export default function App() {
                 : `vor ${daysSinceWaterChange} Tagen`}
             </strong>
           </div>
+
           <div style={styles.tipBox}>
             <div style={styles.valueLabel}>Nitrat-Trend</div>
             <strong>{no3TrendText}</strong>
@@ -702,58 +908,16 @@ export default function App() {
 
         <section style={styles.card}>
           <div style={styles.cardTitle}>
-            <CalendarDays size={18} /> Heute
+            <Droplets size={18} /> Letzte Werte
           </div>
-          <div style={styles.muted}>
-            {WEEKDAYS[today.getDay()]} · {today.toLocaleDateString("de-DE")}
-          </div>
-          <div style={styles.badgeRow}>
-            {todayPlan.map((item) => (
-              <span key={item} style={styles.badge}>
-                {item}
-              </span>
-            ))}
-          </div>
-          <div style={styles.columnGap}>
-            <button
-              style={styles.primaryButton}
-              onClick={() => quickLogToday("NPK")}
-            >
-              NPK als erledigt speichern
-            </button>
-            <button
-              style={styles.primaryButton}
-              onClick={() => quickLogToday("Ferropol")}
-            >
-              Ferropol als erledigt speichern
-            </button>
-            <button
-              style={styles.primaryButton}
-              onClick={() => quickLogToday("Tagesdünger")}
-            >
-              Tagesdünger als erledigt speichern
-            </button>
-            {today.getDay() === 1 && (
-              <button
-                style={styles.primaryButton}
-                onClick={quickLogWaterChange}
-              >
-                Wasserwechsel als erledigt speichern
-              </button>
-            )}
-          </div>
-        </section>
 
-        <section style={styles.card}>
-          <div style={styles.cardTitle}>
-            <Droplets size={18} /> {aquariumName}
-          </div>
           <div style={styles.infoRow}>
             <span>Letzte Messung</span>
             <strong>
               {latestWater ? formatDate(latestWater.date) : "noch keine"}
             </strong>
           </div>
+
           <div style={styles.infoRow}>
             <span>Letzter Wasserwechsel</span>
             <strong>
@@ -762,6 +926,7 @@ export default function App() {
                 : "noch keiner"}
             </strong>
           </div>
+
           <div style={styles.valueGrid}>
             <div style={styles.valueCard}>
               <div style={styles.valueLabel}>NO3</div>
@@ -786,6 +951,7 @@ export default function App() {
           <div style={styles.cardTitle}>
             <LineChartIcon size={18} /> Überblick
           </div>
+
           <div style={styles.infoRow}>
             <span>Dünger-Einträge</span>
             <strong>{fertilizerLogs.length}</strong>
@@ -798,10 +964,12 @@ export default function App() {
             <span>Wasserwechsel</span>
             <strong>{waterChangeLogs.length}</strong>
           </div>
+
           <div style={styles.tipBox}>
-            Tipp: Auf dem Handy als Startbildschirm-App speichern. Über den
-            Backup-Export kannst du deine Daten sichern.
+            Tipp: Als Startbildschirm-App speichern und Benachrichtigungen
+            aktivieren.
           </div>
+
           <div style={styles.syncBox}>
             <strong>Sync:</strong> {syncStatus}
           </div>
@@ -820,8 +988,7 @@ export default function App() {
 
           <div style={styles.tipBox}>
             Hier kannst du dir merken, wieviel du normalerweise in dieses
-            Aquarium dosierst. Das ist nur ein Merkzettel und unabhängig von den
-            täglichen Einträgen.
+            Aquarium dosierst.
           </div>
 
           <div style={styles.formGrid}>
@@ -863,6 +1030,7 @@ export default function App() {
               <FlaskConical size={18} /> Dünger eintragen
             </div>
           </div>
+
           <div style={styles.formGrid}>
             <label style={styles.label}>
               Datum
@@ -878,6 +1046,7 @@ export default function App() {
                 }
               />
             </label>
+
             <label style={styles.label}>
               Dünger
               <select
@@ -895,6 +1064,7 @@ export default function App() {
                 <option value="Tagesdünger">Tagesdünger</option>
               </select>
             </label>
+
             <label style={styles.label}>
               Menge
               <input
@@ -909,6 +1079,7 @@ export default function App() {
                 }
               />
             </label>
+
             <button style={styles.primaryButton} onClick={addFertilizerLog}>
               Speichern
             </button>
@@ -923,7 +1094,7 @@ export default function App() {
               fertilizerLogs.map((entry) => (
                 <div key={entry.id} style={styles.historyItemRow}>
                   <div>
-                    <div style={{ fontWeight: 600 }}>{entry.fertilizer}</div>
+                    <div style={{ fontWeight: 700 }}>{entry.fertilizer}</div>
                     <div style={styles.smallMuted}>
                       {formatDate(entry.date)} · {entry.amount}
                     </div>
@@ -952,6 +1123,7 @@ export default function App() {
               <Droplets size={18} /> Wasserwerte eintragen
             </div>
           </div>
+
           <div style={styles.formGrid}>
             <label style={styles.label}>
               Datum
@@ -964,6 +1136,7 @@ export default function App() {
                 }
               />
             </label>
+
             <label style={styles.label}>
               NO3
               <input
@@ -974,6 +1147,7 @@ export default function App() {
                 }
               />
             </label>
+
             <label style={styles.label}>
               NO2
               <input
@@ -984,6 +1158,7 @@ export default function App() {
                 }
               />
             </label>
+
             <label style={styles.label}>
               pH
               <input
@@ -994,6 +1169,7 @@ export default function App() {
                 }
               />
             </label>
+
             <label style={styles.label}>
               O₂
               <input
@@ -1004,6 +1180,7 @@ export default function App() {
                 }
               />
             </label>
+
             <button style={styles.primaryButton} onClick={addWaterLog}>
               Speichern
             </button>
@@ -1018,7 +1195,7 @@ export default function App() {
               waterLogs.map((entry) => (
                 <div key={entry.id} style={styles.historyItemColumn}>
                   <div style={styles.historyHeader}>
-                    <div style={{ fontWeight: 600 }}>
+                    <div style={{ fontWeight: 700 }}>
                       Messung vom {formatDate(entry.date)}
                     </div>
                     <button
@@ -1028,6 +1205,7 @@ export default function App() {
                       <Trash2 size={16} />
                     </button>
                   </div>
+
                   <div style={styles.valueGrid}>
                     <div style={styles.valueCard}>
                       <div style={styles.valueLabel}>NO3</div>
@@ -1062,6 +1240,7 @@ export default function App() {
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Wochenübersicht
           </div>
+
           <div style={styles.gridWeek}>
             {weekOverview.map((day) => (
               <div key={day.iso} style={styles.weekCard}>
@@ -1069,6 +1248,7 @@ export default function App() {
                   <div style={{ fontWeight: 700 }}>{day.shortWeekday}</div>
                   <div style={styles.smallMuted}>{day.displayDate}</div>
                 </div>
+
                 <div style={{ display: "grid", gap: 6 }}>
                   {day.plan.length === 0 ? (
                     <div style={styles.smallMuted}>Keine Aufgaben</div>
@@ -1088,6 +1268,7 @@ export default function App() {
                     })
                   )}
                 </div>
+
                 <div style={{ marginTop: 8 }}>
                   {day.dayWater ? (
                     <div style={styles.weekMeasureBox}>
@@ -1108,6 +1289,7 @@ export default function App() {
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Verlauf & Historie
           </div>
+
           <div style={styles.grid3}>
             <div>
               <div style={styles.subhead}>Alle Dünger-Einträge</div>
@@ -1118,7 +1300,7 @@ export default function App() {
                   fertilizerLogs.map((entry) => (
                     <div key={entry.id} style={styles.historyItemRow}>
                       <div>
-                        <div style={{ fontWeight: 600 }}>
+                        <div style={{ fontWeight: 700 }}>
                           {entry.fertilizer}
                         </div>
                         <div style={styles.smallMuted}>
@@ -1136,6 +1318,7 @@ export default function App() {
                 )}
               </div>
             </div>
+
             <div>
               <div style={styles.subhead}>Alle Wasser-Messungen</div>
               <div style={styles.historyListTall}>
@@ -1145,7 +1328,7 @@ export default function App() {
                   waterLogs.map((entry) => (
                     <div key={entry.id} style={styles.historyItemColumn}>
                       <div style={styles.historyHeader}>
-                        <div style={{ fontWeight: 600 }}>
+                        <div style={{ fontWeight: 700 }}>
                           Messung vom {formatDate(entry.date)}
                         </div>
                         <button
@@ -1164,6 +1347,7 @@ export default function App() {
                 )}
               </div>
             </div>
+
             <div>
               <div style={styles.subhead}>Alle Wasserwechsel</div>
               <div style={styles.historyListTall}>
@@ -1177,7 +1361,7 @@ export default function App() {
                       <div>
                         <div
                           style={{
-                            fontWeight: 600,
+                            fontWeight: 700,
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
@@ -1214,6 +1398,7 @@ export default function App() {
             <div style={styles.cardTitle}>
               <LineChartIcon size={18} /> Wasserwerte-Verlauf
             </div>
+
             <div style={styles.buttonRowWrap}>
               <button
                 style={
@@ -1268,42 +1453,47 @@ export default function App() {
               <div style={{ width: "100%", height: 340, marginTop: 8 }}>
                 <ResponsiveContainer>
                   <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
+                    <XAxis dataKey="date" stroke="#64748b" />
+                    <YAxis stroke="#64748b" />
                     <Tooltip />
                     <Legend />
                     <Line
                       type="monotone"
                       dataKey="no3"
                       name="NO3"
-                      stroke="#2563eb"
-                      strokeWidth={2}
+                      stroke="#0ea5e9"
+                      strokeWidth={3}
+                      dot={{ r: 3 }}
                     />
                     <Line
                       type="monotone"
                       dataKey="no2"
                       name="NO2"
-                      stroke="#16a34a"
-                      strokeWidth={2}
+                      stroke="#22c55e"
+                      strokeWidth={3}
+                      dot={{ r: 3 }}
                     />
                     <Line
                       type="monotone"
                       dataKey="ph"
                       name="pH"
-                      stroke="#ea580c"
-                      strokeWidth={2}
+                      stroke="#f97316"
+                      strokeWidth={3}
+                      dot={{ r: 3 }}
                     />
                     <Line
                       type="monotone"
                       dataKey="o2"
                       name="O₂"
-                      stroke="#7c3aed"
-                      strokeWidth={2}
+                      stroke="#8b5cf6"
+                      strokeWidth={3}
+                      dot={{ r: 3 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+
               <div style={styles.grid3}>
                 <div style={styles.tipBox}>
                   <div style={styles.valueLabel}>Pflegeplan</div>
@@ -1318,9 +1508,10 @@ export default function App() {
                   <strong>Ferropol · Di/Do</strong>
                 </div>
               </div>
+
               <div style={styles.smallMuted}>
-                Das Diagramm zeigt die Entwicklung deiner eingetragenen
-                Wochenwerte für {aquariumName}.
+                Das Diagramm zeigt die Entwicklung deiner eingetragenen Werte
+                für {aquariumName}.
               </div>
             </>
           )}
@@ -1330,134 +1521,199 @@ export default function App() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.containerWithBottomNav}>
-        <div style={styles.topBar}>
-          <div>
-            <h1 style={styles.h1}>Aquarium Logbuch</h1>
-            <p style={styles.sub}>
-              Einfaches Handy-Log für Dünger, Wasserwerte und Wasserwechsel.
-            </p>
-          </div>
+    <>
+      <style>{`
+        @keyframes swimAcross {
+          0% { transform: translateX(-22vw) translateY(0px) scale(var(--fish-scale, 1)); }
+          50% { transform: translateX(55vw) translateY(-6px) scale(var(--fish-scale, 1)); }
+          100% { transform: translateX(122vw) translateY(4px) scale(var(--fish-scale, 1)); }
+        }
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={styles.tabRow}>
-              {aquariums.map((aq) => (
-                <button
-                  key={aq.id}
-                  onClick={() => setSelectedAquarium(aq.id)}
-                  style={{
-                    ...styles.tab,
-                    ...(selectedAquarium === aq.id ? styles.tabActive : {}),
-                  }}
-                >
-                  {aq.name}
+        @keyframes bubbleUp {
+          0% { transform: translateY(30px) scale(0.9); opacity: 0; }
+          25% { opacity: 0.28; }
+          100% { transform: translateY(-80vh) scale(1.15); opacity: 0; }
+        }
+
+        @keyframes fadeSplash {
+          0% { opacity: 0; transform: scale(1.02); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes pulseGlow {
+          0% { transform: scale(1); opacity: 0.4; }
+          50% { transform: scale(1.08); opacity: 0.65; }
+          100% { transform: scale(1); opacity: 0.4; }
+        }
+      `}</style>
+
+      {showSplash && renderSplash()}
+
+      <div style={styles.page}>
+        <div style={styles.containerWithBottomNav}>
+          <div style={styles.topBar}>
+            <div style={{ maxWidth: 720 }}>
+              <h1 style={styles.h1}>Aquarium Logbuch</h1>
+              <p style={styles.sub}>
+                Ruhiges, modernes Pflege-Log für Dünger, Wasserwerte,
+                Wasserwechsel und Verlauf.
+              </p>
+
+              <div style={styles.heroMetaRow}>
+                <div style={styles.heroMetaChip}>
+                  <Sparkles size={16} /> Ruhiger Pflege-Flow
+                </div>
+                <div style={styles.heroMetaChip}>
+                  <RefreshCw size={16} /> {syncStatus}
+                </div>
+
+                <button style={styles.heroMetaButton} onClick={enableNotifications}>
+                  <Bell size={16} />
+                  {notificationPermission === "granted"
+                    ? "Benachrichtigungen aktiv"
+                    : notificationPermission === "denied"
+                    ? "Benachrichtigungen blockiert"
+                    : notificationPermission === "unsupported"
+                    ? "Nicht unterstützt"
+                    : "Benachrichtigungen aktivieren"}
                 </button>
-              ))}
 
-              <button style={styles.addAquariumButton} onClick={addAquarium}>
-                <Plus size={16} />
-              </button>
+                {notificationPermission === "granted" && (
+                  <button
+                    style={styles.secondaryPillButton}
+                    onClick={sendTestNotification}
+                  >
+                    Test senden
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div style={styles.buttonRowWrap}>
-              <button
-                style={styles.secondaryButton}
-                onClick={refreshCloudState}
-              >
-                <RefreshCw size={16} /> Aktualisieren
-              </button>
-              <button style={styles.secondaryButton} onClick={exportBackup}>
-                <Download size={16} /> Backup exportieren
-              </button>
-              <button
-                style={styles.secondaryButton}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload size={16} /> Backup importieren
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={importBackup}
-              />
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={styles.tabRow}>
+                {aquariums.map((aq) => (
+                  <button
+                    key={aq.id}
+                    onClick={() => setSelectedAquarium(aq.id)}
+                    style={{
+                      ...styles.tab,
+                      ...(selectedAquarium === aq.id ? styles.tabActive : {}),
+                    }}
+                  >
+                    {aq.name}
+                  </button>
+                ))}
+
+                <button style={styles.addAquariumButton} onClick={addAquarium}>
+                  <Plus size={16} />
+                </button>
+              </div>
+
+              <div style={styles.buttonRowWrap}>
+                <button style={styles.secondaryButton} onClick={refreshCloudState}>
+                  <RefreshCw size={16} /> Aktualisieren
+                </button>
+
+                <button style={styles.secondaryButton} onClick={exportBackup}>
+                  <Download size={16} /> Backup exportieren
+                </button>
+
+                <button
+                  style={styles.secondaryButton}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={16} /> Backup importieren
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json"
+                  style={{ display: "none" }}
+                  onChange={importBackup}
+                />
+              </div>
             </div>
           </div>
+
+          {activeTab === "dashboard" && renderDashboard()}
+          {activeTab === "fertilizer" && renderFertilizer()}
+          {activeTab === "water" && renderWater()}
+          {activeTab === "history" && renderHistory()}
+          {activeTab === "chart" && renderChart()}
         </div>
 
-        {activeTab === "dashboard" && renderDashboard()}
-        {activeTab === "fertilizer" && renderFertilizer()}
-        {activeTab === "water" && renderWater()}
-        {activeTab === "history" && renderHistory()}
-        {activeTab === "chart" && renderChart()}
-      </div>
+        <div style={styles.bottomNav}>
+          <button
+            style={{
+              ...styles.bottomNavButton,
+              ...(activeTab === "dashboard" ? styles.bottomNavButtonActive : {}),
+            }}
+            onClick={() => setActiveTab("dashboard")}
+          >
+            <CalendarDays size={18} />
+            <span>Start</span>
+          </button>
 
-      <div style={styles.bottomNav}>
-        <button
-          style={{
-            ...styles.bottomNavButton,
-            ...(activeTab === "dashboard" ? styles.bottomNavButtonActive : {}),
-          }}
-          onClick={() => setActiveTab("dashboard")}
-        >
-          <CalendarDays size={18} />
-          <span>Start</span>
-        </button>
-        <button
-          style={{
-            ...styles.bottomNavButton,
-            ...(activeTab === "fertilizer" ? styles.bottomNavButtonActive : {}),
-          }}
-          onClick={() => setActiveTab("fertilizer")}
-        >
-          <FlaskConical size={18} />
-          <span>Dünger</span>
-        </button>
-        <button
-          style={{
-            ...styles.bottomNavButton,
-            ...(activeTab === "water" ? styles.bottomNavButtonActive : {}),
-          }}
-          onClick={() => setActiveTab("water")}
-        >
-          <Droplets size={18} />
-          <span>Messung</span>
-        </button>
-        <button
-          style={{
-            ...styles.bottomNavButton,
-            ...(activeTab === "history" ? styles.bottomNavButtonActive : {}),
-          }}
-          onClick={() => setActiveTab("history")}
-        >
-          <Waves size={18} />
-          <span>Verlauf</span>
-        </button>
-        <button
-          style={{
-            ...styles.bottomNavButton,
-            ...(activeTab === "chart" ? styles.bottomNavButtonActive : {}),
-          }}
-          onClick={() => setActiveTab("chart")}
-        >
-          <LineChartIcon size={18} />
-          <span>Diagramm</span>
-        </button>
+          <button
+            style={{
+              ...styles.bottomNavButton,
+              ...(activeTab === "fertilizer" ? styles.bottomNavButtonActive : {}),
+            }}
+            onClick={() => setActiveTab("fertilizer")}
+          >
+            <FlaskConical size={18} />
+            <span>Dünger</span>
+          </button>
+
+          <button
+            style={{
+              ...styles.bottomNavButton,
+              ...(activeTab === "water" ? styles.bottomNavButtonActive : {}),
+            }}
+            onClick={() => setActiveTab("water")}
+          >
+            <Droplets size={18} />
+            <span>Messung</span>
+          </button>
+
+          <button
+            style={{
+              ...styles.bottomNavButton,
+              ...(activeTab === "history" ? styles.bottomNavButtonActive : {}),
+            }}
+            onClick={() => setActiveTab("history")}
+          >
+            <Waves size={18} />
+            <span>Verlauf</span>
+          </button>
+
+          <button
+            style={{
+              ...styles.bottomNavButton,
+              ...(activeTab === "chart" ? styles.bottomNavButtonActive : {}),
+            }}
+            onClick={() => setActiveTab("chart")}
+          >
+            <LineChartIcon size={18} />
+            <span>Diagramm</span>
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background: "#f8fafc",
+    background:
+      "radial-gradient(circle at top, rgba(56,189,248,0.18), transparent 30%), linear-gradient(180deg, #f4fbff 0%, #eef6fb 45%, #f8fafc 100%)",
     padding: 16,
     fontFamily: "Inter, system-ui, sans-serif",
     color: "#0f172a",
   },
+
   containerWithBottomNav: {
     maxWidth: 1200,
     margin: "0 auto",
@@ -1465,44 +1721,173 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 16,
     paddingBottom: 96,
   },
+
   screenGrid: {
     display: "grid",
     gap: 16,
   },
+
   topBar: {
     display: "flex",
     justifyContent: "space-between",
     gap: 16,
     flexWrap: "wrap",
     alignItems: "flex-start",
+    background: "rgba(255,255,255,0.62)",
+    border: "1px solid rgba(255,255,255,0.75)",
+    borderRadius: 28,
+    padding: 18,
+    backdropFilter: "blur(14px)",
+    boxShadow: "0 14px 38px rgba(15, 23, 42, 0.06)",
   },
-  h1: { margin: 0, fontSize: 32 },
-  sub: { margin: "6px 0 0", color: "#475569" },
+
+  h1: {
+    margin: 0,
+    fontSize: 34,
+    lineHeight: 1.05,
+    letterSpacing: "-0.03em",
+  },
+
+  sub: {
+    margin: "8px 0 0",
+    color: "#475569",
+    maxWidth: 560,
+    lineHeight: 1.5,
+  },
+
+  heroMetaRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 14,
+  },
+
+  heroMetaChip: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 12px",
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.92)",
+    border: "1px solid #dbeafe",
+    color: "#0f172a",
+    fontSize: 13,
+    fontWeight: 700,
+  },
+
+  heroMetaButton: {
+    border: "1px solid #bfdbfe",
+    borderRadius: 999,
+    padding: "10px 14px",
+    background: "linear-gradient(180deg, #ffffff 0%, #eff6ff 100%)",
+    color: "#0f172a",
+    fontWeight: 800,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  secondaryPillButton: {
+    border: "1px solid #cbd5e1",
+    borderRadius: 999,
+    padding: "10px 14px",
+    background: "white",
+    color: "#0f172a",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+
   grid3: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
     gap: 16,
   },
+
   gridWeek: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
     gap: 12,
   },
+
   card: {
-    background: "white",
-    borderRadius: 20,
+    background: "rgba(255,255,255,0.78)",
+    borderRadius: 24,
     padding: 16,
-    boxShadow: "0 2px 10px rgba(15, 23, 42, 0.06)",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
     display: "grid",
     gap: 12,
+    border: "1px solid rgba(255,255,255,0.7)",
+    backdropFilter: "blur(12px)",
   },
+
+  heroCard: {
+    background:
+      "linear-gradient(135deg, rgba(14,165,233,0.18) 0%, rgba(34,197,94,0.08) 100%), rgba(255,255,255,0.72)",
+    borderRadius: 28,
+    padding: 18,
+    boxShadow: "0 12px 34px rgba(15, 23, 42, 0.08)",
+    display: "grid",
+    gap: 14,
+    border: "1px solid rgba(255,255,255,0.7)",
+    backdropFilter: "blur(12px)",
+  },
+
+  heroTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+  },
+
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: "#0369a1",
+  },
+
+  heroTitle: {
+    fontSize: 28,
+    fontWeight: 800,
+    letterSpacing: "-0.03em",
+    marginTop: 6,
+  },
+
+  heroSubtitle: {
+    marginTop: 4,
+    color: "#475569",
+    fontSize: 14,
+  },
+
+  heroOrb: {
+    width: 56,
+    height: 56,
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "linear-gradient(180deg, #ffffff 0%, #e0f2fe 100%)",
+    boxShadow: "0 8px 20px rgba(14,165,233,0.18)",
+    color: "#0369a1",
+    flexShrink: 0,
+  },
+
+  heroActionGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+    gap: 10,
+  },
+
   cardTitle: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    fontWeight: 700,
+    fontWeight: 800,
     fontSize: 18,
   },
+
   sectionHead: {
     display: "flex",
     justifyContent: "space-between",
@@ -1510,79 +1895,127 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     alignItems: "center",
   },
-  muted: { color: "#64748b", fontSize: 14 },
-  smallMuted: { color: "#64748b", fontSize: 13 },
-  subhead: { fontWeight: 600, marginBottom: 8, color: "#334155" },
-  badgeRow: { display: "flex", flexWrap: "wrap", gap: 8 },
-  badge: {
-    background: "#e2e8f0",
-    padding: "6px 10px",
-    borderRadius: 999,
+
+  muted: {
+    color: "#64748b",
+    fontSize: 14,
+  },
+
+  smallMuted: {
+    color: "#64748b",
     fontSize: 13,
   },
-  columnGap: { display: "grid", gap: 8 },
-  buttonRowWrap: { display: "flex", gap: 8, flexWrap: "wrap" },
+
+  subhead: {
+    fontWeight: 700,
+    marginBottom: 8,
+    color: "#334155",
+  },
+
+  badgeRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  badge: {
+    background: "#e2e8f0",
+    padding: "7px 12px",
+    borderRadius: 999,
+    fontSize: 13,
+    fontWeight: 700,
+  },
+
+  badgePrimary: {
+    background: "linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%)",
+    border: "1px solid #bfdbfe",
+    padding: "8px 12px",
+    borderRadius: 999,
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#0f172a",
+  },
+
+  columnGap: {
+    display: "grid",
+    gap: 8,
+  },
+
+  buttonRowWrap: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+
   primaryButton: {
     border: "none",
-    borderRadius: 14,
-    padding: "11px 14px",
-    background: "#0f172a",
+    borderRadius: 16,
+    padding: "12px 14px",
+    background: "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
     color: "white",
-    fontWeight: 600,
+    fontWeight: 800,
     cursor: "pointer",
+    boxShadow: "0 10px 22px rgba(15,23,42,0.14)",
   },
+
   secondaryButton: {
     border: "1px solid #cbd5e1",
-    borderRadius: 14,
+    borderRadius: 16,
     padding: "10px 14px",
-    background: "white",
+    background: "rgba(255,255,255,0.95)",
     color: "#0f172a",
-    fontWeight: 600,
+    fontWeight: 700,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
     gap: 8,
   },
+
   primarySmallButton: {
     border: "none",
     borderRadius: 12,
     padding: "8px 10px",
     background: "#0f172a",
     color: "white",
-    fontWeight: 600,
+    fontWeight: 700,
     cursor: "pointer",
   },
+
   secondarySmallButton: {
     border: "1px solid #cbd5e1",
     borderRadius: 12,
     padding: "8px 10px",
     background: "white",
     color: "#0f172a",
-    fontWeight: 600,
+    fontWeight: 700,
     cursor: "pointer",
   },
+
   tabRow: {
     display: "flex",
     gap: 8,
     flexWrap: "wrap",
     alignItems: "center",
   },
+
   tab: {
     border: "1px solid #cbd5e1",
-    borderRadius: 14,
+    borderRadius: 16,
     padding: "10px 14px",
-    background: "white",
+    background: "rgba(255,255,255,0.95)",
     cursor: "pointer",
-    fontWeight: 600,
+    fontWeight: 700,
   },
+
   tabActive: {
-    background: "#0f172a",
+    background: "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
     color: "white",
     borderColor: "#0f172a",
   },
+
   addAquariumButton: {
     border: "1px dashed #94a3b8",
-    borderRadius: 14,
+    borderRadius: 16,
     padding: "10px 12px",
     background: "white",
     cursor: "pointer",
@@ -1590,63 +2023,93 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
   },
+
   infoRow: {
     display: "flex",
     justifyContent: "space-between",
     gap: 12,
-    background: "#f1f5f9",
-    borderRadius: 14,
-    padding: "10px 12px",
+    background: "rgba(241,245,249,0.85)",
+    borderRadius: 16,
+    padding: "12px 14px",
     fontSize: 14,
+    border: "1px solid rgba(226,232,240,0.9)",
   },
+
   valueGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 8,
+    gap: 10,
   },
+
   valueCard: {
-    background: "#fff",
-    borderRadius: 14,
+    background: "rgba(255,255,255,0.95)",
+    borderRadius: 16,
     padding: 12,
-    boxShadow: "0 1px 4px rgba(15, 23, 42, 0.06)",
+    boxShadow: "0 4px 14px rgba(15, 23, 42, 0.06)",
+    border: "1px solid #e2e8f0",
   },
-  valueLabel: { color: "#64748b", fontSize: 12 },
-  valueNum: { fontSize: 24, fontWeight: 700 },
-  valueNumSmall: { fontSize: 18, fontWeight: 700 },
+
+  valueLabel: {
+    color: "#64748b",
+    fontSize: 12,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+
+  valueNum: {
+    fontSize: 24,
+    fontWeight: 800,
+    marginTop: 4,
+  },
+
+  valueNumSmall: {
+    fontSize: 18,
+    fontWeight: 800,
+    marginTop: 4,
+  },
+
   tipBox: {
     border: "1px dashed #cbd5e1",
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 12,
     color: "#334155",
-    background: "#f8fafc",
+    background: "rgba(248,250,252,0.82)",
   },
+
   syncBox: {
     border: "1px solid #cbd5e1",
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 12,
     color: "#334155",
     background: "#eef2ff",
     fontSize: 14,
   },
+
   formGrid: {
     display: "grid",
     gap: 10,
   },
+
   label: {
     display: "grid",
     gap: 6,
     fontSize: 14,
     color: "#334155",
-    fontWeight: 600,
+    fontWeight: 700,
   },
+
   input: {
     width: "100%",
-    padding: "10px 12px",
-    borderRadius: 12,
+    padding: "12px 12px",
+    borderRadius: 14,
     border: "1px solid #cbd5e1",
     fontSize: 14,
     boxSizing: "border-box",
+    background: "rgba(255,255,255,0.95)",
+    outline: "none",
   },
+
   historyList: {
     display: "grid",
     gap: 10,
@@ -1654,6 +2117,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflowY: "auto",
     paddingRight: 2,
   },
+
   historyListTall: {
     display: "grid",
     gap: 10,
@@ -1661,65 +2125,75 @@ const styles: Record<string, React.CSSProperties> = {
     overflowY: "auto",
     paddingRight: 2,
   },
+
   historyItemRow: {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
     alignItems: "center",
     border: "1px solid #e2e8f0",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 12,
-    background: "white",
+    background: "rgba(255,255,255,0.94)",
   },
+
   historyItemColumn: {
     display: "grid",
     gap: 10,
     border: "1px solid #e2e8f0",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 12,
-    background: "white",
+    background: "rgba(255,255,255,0.94)",
   },
+
   historyHeader: {
     display: "flex",
     justifyContent: "space-between",
     gap: 10,
     alignItems: "center",
   },
+
   iconButton: {
     border: "none",
     background: "transparent",
     cursor: "pointer",
-    padding: 6,
-    borderRadius: 10,
+    padding: 8,
+    borderRadius: 12,
   },
+
   emptyBox: {
     border: "1px dashed #cbd5e1",
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 14,
     color: "#64748b",
     fontSize: 14,
+    background: "rgba(255,255,255,0.6)",
   },
+
   taskRow: {
-    background: "white",
-    borderRadius: 10,
-    padding: "8px 10px",
+    background: "rgba(255,255,255,0.95)",
+    borderRadius: 12,
+    padding: "9px 10px",
     border: "1px solid #e2e8f0",
     fontSize: 14,
   },
+
   weekCard: {
-    background: "#f8fafc",
+    background: "rgba(248,250,252,0.86)",
     border: "1px solid #e2e8f0",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 12,
     display: "grid",
     gap: 8,
   },
+
   weekCardHead: {
     display: "flex",
     justifyContent: "space-between",
     gap: 8,
     alignItems: "center",
   },
+
   weekTaskDone: {
     background: "#ecfdf5",
     color: "#166534",
@@ -1727,7 +2201,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     padding: "6px 8px",
     fontSize: 13,
+    fontWeight: 700,
   },
+
   weekTaskOpen: {
     background: "#fff7ed",
     color: "#9a3412",
@@ -1735,7 +2211,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     padding: "6px 8px",
     fontSize: 13,
+    fontWeight: 700,
   },
+
   weekMeasureBox: {
     background: "white",
     borderRadius: 10,
@@ -1745,13 +2223,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#334155",
     lineHeight: 1.4,
   },
+
   bottomNav: {
     position: "fixed",
     left: 0,
     right: 0,
     bottom: 0,
-    background: "rgba(255,255,255,0.96)",
-    backdropFilter: "blur(10px)",
+    background: "rgba(255,255,255,0.92)",
+    backdropFilter: "blur(16px)",
     borderTop: "1px solid #e2e8f0",
     display: "grid",
     gridTemplateColumns: "repeat(5, 1fr)",
@@ -1759,11 +2238,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))",
     zIndex: 1000,
   },
+
   bottomNavButton: {
     border: "none",
     background: "transparent",
     cursor: "pointer",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: "8px 4px",
     display: "flex",
     flexDirection: "column",
@@ -1771,10 +2251,141 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     fontSize: 12,
     color: "#475569",
+    fontWeight: 700,
   },
+
   bottomNavButtonActive: {
     background: "#eef2ff",
     color: "#0f172a",
-    fontWeight: 700,
+    fontWeight: 800,
+  },
+
+  splashOverlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 3000,
+    overflow: "hidden",
+    background:
+      "radial-gradient(circle at 30% 20%, rgba(125,211,252,0.35), transparent 20%), radial-gradient(circle at 70% 30%, rgba(34,211,238,0.18), transparent 24%), linear-gradient(180deg, #021522 0%, #06293f 35%, #0a4c6a 100%)",
+    animation: "fadeSplash 450ms ease",
+  },
+
+  splashGlowA: {
+    position: "absolute",
+    width: 420,
+    height: 420,
+    borderRadius: "50%",
+    background: "rgba(56, 189, 248, 0.12)",
+    top: -80,
+    left: -80,
+    filter: "blur(24px)",
+    animation: "pulseGlow 4s ease-in-out infinite",
+  },
+
+  splashGlowB: {
+    position: "absolute",
+    width: 360,
+    height: 360,
+    borderRadius: "50%",
+    background: "rgba(103, 232, 249, 0.1)",
+    bottom: -100,
+    right: -60,
+    filter: "blur(28px)",
+    animation: "pulseGlow 5.2s ease-in-out infinite",
+  },
+
+  fishLane: {
+    position: "absolute",
+    inset: 0,
+  },
+
+  splashFish: {
+    position: "absolute",
+    left: 0,
+    width: 42,
+    height: 18,
+    animationName: "swimAcross",
+    animationTimingFunction: "linear",
+    animationIterationCount: 1,
+  },
+
+  splashFishBody: {
+    position: "absolute",
+    left: 8,
+    top: 2,
+    width: 24,
+    height: 14,
+    borderRadius: "50% 55% 55% 50%",
+    background: "linear-gradient(90deg, #e0f2fe 0%, #7dd3fc 55%, #22d3ee 100%)",
+    boxShadow: "0 0 12px rgba(125,211,252,0.4)",
+  },
+
+  splashFishTail: {
+    position: "absolute",
+    left: 0,
+    top: 4,
+    width: 0,
+    height: 0,
+    borderTop: "5px solid transparent",
+    borderBottom: "5px solid transparent",
+    borderRight: "10px solid #67e8f9",
+  },
+
+  bubbleLayer: {
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
+  },
+
+  bubble: {
+    position: "absolute",
+    bottom: -30,
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    background: "rgba(255,255,255,0.35)",
+    boxShadow: "0 0 10px rgba(255,255,255,0.18)",
+    animationName: "bubbleUp",
+    animationTimingFunction: "linear",
+    animationIterationCount: "infinite",
+  },
+
+  splashCenter: {
+    position: "absolute",
+    left: "50%",
+    top: "52%",
+    transform: "translate(-50%, -50%)",
+    textAlign: "center",
+    padding: 24,
+    width: "min(92vw, 560px)",
+  },
+
+  splashBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "8px 14px",
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.14)",
+    color: "#e0f2fe",
+    border: "1px solid rgba(255,255,255,0.18)",
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: "0.14em",
+  },
+
+  splashTitle: {
+    margin: "18px 0 10px",
+    fontSize: "clamp(32px, 6vw, 56px)",
+    lineHeight: 1,
+    letterSpacing: "-0.04em",
+    color: "#f8fdff",
+  },
+
+  splashText: {
+    margin: 0,
+    color: "rgba(240,249,255,0.88)",
+    fontSize: 16,
+    lineHeight: 1.55,
   },
 };
