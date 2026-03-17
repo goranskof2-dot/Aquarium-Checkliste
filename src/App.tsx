@@ -814,61 +814,81 @@ export default function App() {
   }
 
   function renderSplash() {
-    const fish = Array.from({ length: 20 }).map((_, index) => {
-      const top = 8 + (index % 10) * 7.5;
-      const delay = index * 0.12;
-      const duration = 2.7 + (index % 5) * 0.35;
-      const scale = 0.72 + (index % 4) * 0.12;
+  const fish = Array.from({ length: 28 }).map((_, index) => {
+    const lane = index % 14;
+    const isReverse = index % 5 === 0 || index % 6 === 0;
+    const top = 6 + lane * 6.2;
+    const delay = index * 0.16;
+    const duration = 6.5 + (index % 6) * 0.9;
+    const scale = 0.55 + (index % 5) * 0.16;
+    const opacity = 0.28 + (index % 6) * 0.1;
 
-      return (
+    return (
+      <div
+        key={index}
+        style={{
+          ...styles.splashFish,
+          top: `${top}%`,
+          animationDelay: `${delay}s`,
+          animationDuration: `${duration}s`,
+          opacity,
+          transform: isReverse ? "scaleX(-1)" : "none",
+        }}
+      >
         <div
-          key={index}
           style={{
-            ...styles.splashFish,
-            top: `${top}%`,
-            animationDelay: `${delay}s`,
-            animationDuration: `${duration}s`,
-            opacity: 0.9 - (index % 4) * 0.1,
-            ["--fish-scale" as any]: String(scale),
+            ...styles.splashFishInner,
+            transform: `scale(${scale}) ${isReverse ? "scaleX(-1)" : ""}`,
           }}
         >
           <div style={styles.splashFishBody} />
           <div style={styles.splashFishTail} />
-        </div>
-      );
-    });
-
-    return (
-      <div style={styles.splashOverlay}>
-        <div style={styles.splashGlowA} />
-        <div style={styles.splashGlowB} />
-
-        <div style={styles.bubbleLayer}>
-          {Array.from({ length: 16 }).map((_, i) => (
-            <span
-              key={i}
-              style={{
-                ...styles.bubble,
-                left: `${6 + i * 6}%`,
-                animationDelay: `${i * 0.18}s`,
-                animationDuration: `${3.2 + (i % 4) * 0.6}s`,
-              }}
-            />
-          ))}
-        </div>
-
-        <div style={styles.fishLane}>{fish}</div>
-
-        <div style={styles.splashCenter}>
-          <div style={styles.splashBadge}>AQUARIUM LOGBUCH</div>
-          <h1 style={styles.splashTitle}>Dein Becken. Dein Rhythmus.</h1>
-          <p style={styles.splashText}>
-            Pflege, Wasserwerte und Dünger in einer ruhigen, modernen Ansicht.
-          </p>
+          <div style={styles.splashFishFinTop} />
+          <div style={styles.splashFishFinBottom} />
+          <div style={styles.splashFishEye} />
         </div>
       </div>
     );
-  }
+  });
+
+  return (
+    <div style={styles.splashOverlay}>
+      <div style={styles.splashGlowA} />
+      <div style={styles.splashGlowB} />
+      <div style={styles.splashGlowC} />
+
+      <div style={styles.splashWaterGradientTop} />
+      <div style={styles.splashWaterGradientBottom} />
+
+      <div style={styles.bubbleLayer}>
+        {Array.from({ length: 24 }).map((_, i) => (
+          <span
+            key={i}
+            style={{
+              ...styles.bubble,
+              left: `${4 + i * 4}%`,
+              width: `${6 + (i % 4) * 4}px`,
+              height: `${6 + (i % 4) * 4}px`,
+              animationDelay: `${i * 0.22}s`,
+              animationDuration: `${5 + (i % 5) * 0.9}s`,
+              opacity: 0.16 + (i % 5) * 0.06,
+            }}
+          />
+        ))}
+      </div>
+
+      <div style={styles.fishLane}>{fish}</div>
+
+      <div style={styles.splashCenter}>
+        <div style={styles.splashBadge}>AQUARIUM LOGBUCH</div>
+        <h1 style={styles.splashTitle}>Dein Becken. Dein Rhythmus.</h1>
+        <p style={styles.splashText}>
+          Pflege, Wasserwerte und Dünger in einer ruhigen, modernen Ansicht.
+        </p>
+      </div>
+    </div>
+  );
+}
 
   function renderDashboard() {
     return (
@@ -1581,29 +1601,103 @@ export default function App() {
   return (
     <>
       <style>{`
-        @keyframes swimAcross {
-          0% { transform: translateX(-22vw) translateY(0px) scale(var(--fish-scale, 1)); }
-          50% { transform: translateX(55vw) translateY(-6px) scale(var(--fish-scale, 1)); }
-          100% { transform: translateX(122vw) translateY(4px) scale(var(--fish-scale, 1)); }
-        }
+  @keyframes swimAcross {
+    0% {
+      transform: translateX(-18vw) translateY(0px);
+    }
+    20% {
+      transform: translateX(10vw) translateY(-6px);
+    }
+    40% {
+      transform: translateX(35vw) translateY(5px);
+    }
+    60% {
+      transform: translateX(62vw) translateY(-8px);
+    }
+    80% {
+      transform: translateX(90vw) translateY(4px);
+    }
+    100% {
+      transform: translateX(118vw) translateY(-3px);
+    }
+  }
 
-        @keyframes bubbleUp {
-          0% { transform: translateY(30px) scale(0.9); opacity: 0; }
-          25% { opacity: 0.28; }
-          100% { transform: translateY(-80vh) scale(1.15); opacity: 0; }
-        }
+  @keyframes bubbleUp {
+    0% {
+      transform: translateY(30px) translateX(0px) scale(0.8);
+      opacity: 0;
+    }
+    20% {
+      opacity: 0.22;
+    }
+    40% {
+      transform: translateY(-20vh) translateX(6px) scale(0.95);
+    }
+    70% {
+      transform: translateY(-50vh) translateX(-4px) scale(1.05);
+    }
+    100% {
+      transform: translateY(-85vh) translateX(10px) scale(1.15);
+      opacity: 0;
+    }
+  }
 
-        @keyframes fadeSplash {
-          0% { opacity: 0; transform: scale(1.02); }
-          100% { opacity: 1; transform: scale(1); }
-        }
+  @keyframes fadeSplash {
+    0% {
+      opacity: 0;
+      transform: scale(1.015);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
 
-        @keyframes pulseGlow {
-          0% { transform: scale(1); opacity: 0.4; }
-          50% { transform: scale(1.08); opacity: 0.65; }
-          100% { transform: scale(1); opacity: 0.4; }
-        }
-      `}</style>
+  @keyframes pulseGlow {
+    0% {
+      transform: scale(1);
+      opacity: 0.34;
+    }
+    50% {
+      transform: scale(1.08);
+      opacity: 0.58;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 0.34;
+    }
+  }
+
+  @keyframes fishWiggle {
+    0% {
+      transform: rotate(0deg);
+    }
+    25% {
+      transform: rotate(2deg);
+    }
+    50% {
+      transform: rotate(0deg);
+    }
+    75% {
+      transform: rotate(-2deg);
+    }
+    100% {
+      transform: rotate(0deg);
+    }
+  }
+
+  @keyframes centerFloat {
+    0% {
+      transform: translate(-50%, -50%);
+    }
+    50% {
+      transform: translate(-50%, calc(-50% - 4px));
+    }
+    100% {
+      transform: translate(-50%, -50%);
+    }
+  }
+`}</style>
 
       {showSplash && renderSplash()}
 
@@ -2319,53 +2413,53 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   splashOverlay: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 3000,
-    overflow: "hidden",
-    background:
-      "radial-gradient(circle at 30% 20%, rgba(125,211,252,0.35), transparent 20%), radial-gradient(circle at 70% 30%, rgba(34,211,238,0.18), transparent 24%), linear-gradient(180deg, #021522 0%, #06293f 35%, #0a4c6a 100%)",
-    animation: "fadeSplash 450ms ease",
-  },
+  position: "fixed",
+  inset: 0,
+  zIndex: 3000,
+  overflow: "hidden",
+  background:
+    "radial-gradient(circle at 20% 15%, rgba(125,211,252,0.22), transparent 18%), radial-gradient(circle at 75% 25%, rgba(34,211,238,0.14), transparent 22%), linear-gradient(180deg, #03131f 0%, #06253a 28%, #0a4560 58%, #0f6b88 100%)",
+  animation: "fadeSplash 500ms ease",
+},
 
   splashGlowA: {
-    position: "absolute",
-    width: 420,
-    height: 420,
-    borderRadius: "50%",
-    background: "rgba(56, 189, 248, 0.12)",
-    top: -80,
-    left: -80,
-    filter: "blur(24px)",
-    animation: "pulseGlow 4s ease-in-out infinite",
-  },
+  position: "absolute",
+  width: 420,
+  height: 420,
+  borderRadius: "50%",
+  background: "rgba(56, 189, 248, 0.09)",
+  top: -90,
+  left: -90,
+  filter: "blur(30px)",
+  animation: "pulseGlow 6s ease-in-out infinite",
+},
 
   splashGlowB: {
-    position: "absolute",
-    width: 360,
-    height: 360,
-    borderRadius: "50%",
-    background: "rgba(103, 232, 249, 0.1)",
-    bottom: -100,
-    right: -60,
-    filter: "blur(28px)",
-    animation: "pulseGlow 5.2s ease-in-out infinite",
-  },
+  position: "absolute",
+  width: 380,
+  height: 380,
+  borderRadius: "50%",
+  background: "rgba(103, 232, 249, 0.08)",
+  bottom: -120,
+  right: -60,
+  filter: "blur(32px)",
+  animation: "pulseGlow 7s ease-in-out infinite",
+},
 
   fishLane: {
-    position: "absolute",
-    inset: 0,
-  },
+  position: "absolute",
+  inset: 0,
+},
 
   splashFish: {
-    position: "absolute",
-    left: 0,
-    width: 42,
-    height: 18,
-    animationName: "swimAcross",
-    animationTimingFunction: "linear",
-    animationIterationCount: 1,
-  },
+  position: "absolute",
+  left: 0,
+  width: 46,
+  height: 22,
+  animationName: "swimAcross",
+  animationTimingFunction: "linear",
+  animationIterationCount: 1,
+},
 
   splashFishBody: {
     position: "absolute",
@@ -2390,60 +2484,156 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   bubbleLayer: {
-    position: "absolute",
-    inset: 0,
-    pointerEvents: "none",
-  },
+  position: "absolute",
+  inset: 0,
+  pointerEvents: "none",
+},
 
   bubble: {
-    position: "absolute",
-    bottom: -30,
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    background: "rgba(255,255,255,0.35)",
-    boxShadow: "0 0 10px rgba(255,255,255,0.18)",
-    animationName: "bubbleUp",
-    animationTimingFunction: "linear",
-    animationIterationCount: "infinite",
-  },
+  position: "absolute",
+  bottom: -30,
+  borderRadius: "50%",
+  background: "rgba(255,255,255,0.28)",
+  boxShadow: "0 0 10px rgba(255,255,255,0.1)",
+  animationName: "bubbleUp",
+  animationTimingFunction: "linear",
+  animationIterationCount: "infinite",
+},
 
   splashCenter: {
-    position: "absolute",
-    left: "50%",
-    top: "52%",
-    transform: "translate(-50%, -50%)",
-    textAlign: "center",
-    padding: 24,
-    width: "min(92vw, 560px)",
-  },
+  position: "absolute",
+  left: "50%",
+  top: "54%",
+  transform: "translate(-50%, -50%)",
+  textAlign: "center",
+  padding: 24,
+  width: "min(92vw, 560px)",
+  animation: "centerFloat 4.5s ease-in-out infinite",
+},
 
   splashBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "8px 14px",
-    borderRadius: 999,
-    background: "rgba(255,255,255,0.14)",
-    color: "#e0f2fe",
-    border: "1px solid rgba(255,255,255,0.18)",
-    fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: "0.14em",
-  },
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "8px 14px",
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.12)",
+  color: "#e0f2fe",
+  border: "1px solid rgba(255,255,255,0.16)",
+  fontSize: 12,
+  fontWeight: 800,
+  letterSpacing: "0.14em",
+  backdropFilter: "blur(8px)",
+},
 
   splashTitle: {
-    margin: "18px 0 10px",
-    fontSize: "clamp(32px, 6vw, 56px)",
-    lineHeight: 1,
-    letterSpacing: "-0.04em",
-    color: "#f8fdff",
-  },
+  margin: "18px 0 10px",
+  fontSize: "clamp(34px, 6vw, 58px)",
+  lineHeight: 1,
+  letterSpacing: "-0.045em",
+  color: "#f8fdff",
+  textShadow: "0 8px 30px rgba(0,0,0,0.18)",
+},
 
   splashText: {
-    margin: 0,
-    color: "rgba(240,249,255,0.88)",
-    fontSize: 16,
-    lineHeight: 1.55,
-  },
+  margin: 0,
+  color: "rgba(240,249,255,0.9)",
+  fontSize: 16,
+  lineHeight: 1.6,
+},
+
+  splashGlowC: {
+  position: "absolute",
+  width: 260,
+  height: 260,
+  borderRadius: "50%",
+  background: "rgba(186, 230, 253, 0.08)",
+  top: "28%",
+  left: "50%",
+  transform: "translateX(-50%)",
+  filter: "blur(40px)",
+  animation: "pulseGlow 8s ease-in-out infinite",
+},
+
+  splashWaterGradientTop: {
+  position: "absolute",
+  inset: 0,
+  background:
+    "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 30%)",
+  pointerEvents: "none",
+},
+
+  splashWaterGradientBottom: {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  height: "28%",
+  background:
+    "linear-gradient(180deg, rgba(4, 47, 66, 0) 0%, rgba(3, 31, 46, 0.34) 100%)",
+  pointerEvents: "none",
+},
+
+  splashFishInner: {
+  position: "relative",
+  width: 46,
+  height: 22,
+  animation: "fishWiggle 1.6s ease-in-out infinite",
+  transformOrigin: "center center",
+},
+
+  splashFishBody: {
+  position: "absolute",
+  left: 10,
+  top: 4,
+  width: 24,
+  height: 14,
+  borderRadius: "55% 60% 60% 55%",
+  background:
+    "linear-gradient(90deg, rgba(224,242,254,0.95) 0%, rgba(125,211,252,0.86) 52%, rgba(34,211,238,0.74) 100%)",
+  boxShadow: "0 0 12px rgba(125,211,252,0.18)",
+},
+
+  splashFishTail: {
+  position: "absolute",
+  left: 0,
+  top: 6,
+  width: 0,
+  height: 0,
+  borderTop: "5px solid transparent",
+  borderBottom: "5px solid transparent",
+  borderRight: "10px solid rgba(103,232,249,0.72)",
+},
+
+  splashFishFinTop: {
+  position: "absolute",
+  left: 18,
+  top: 1,
+  width: 0,
+  height: 0,
+  borderLeft: "4px solid transparent",
+  borderRight: "4px solid transparent",
+  borderBottom: "7px solid rgba(186,230,253,0.55)",
+},
+
+  splashFishFinBottom: {
+  position: "absolute",
+  left: 18,
+  top: 13,
+  width: 0,
+  height: 0,
+  borderLeft: "4px solid transparent",
+  borderRight: "4px solid transparent",
+  borderTop: "7px solid rgba(186,230,253,0.4)",
+},
+
+  splashFishEye: {
+  position: "absolute",
+  left: 28,
+  top: 9,
+  width: 2.5,
+  height: 2.5,
+  borderRadius: "50%",
+  background: "rgba(15,23,42,0.75)",
+},
 };
