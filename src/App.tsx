@@ -217,6 +217,39 @@ export default function App() {
 
     return () => window.clearTimeout(timer);
   }, []);
+  
+  useEffect(() => {
+  if (Notification.permission !== "granted") return;
+
+  const today = new Date();
+  const day = today.getDay();
+  const todayKey = today.toISOString().slice(0, 10);
+
+  const lastShown = localStorage.getItem("lastReminder");
+
+  if (lastShown === todayKey) return;
+
+  let message = "";
+
+  if (day === 1) {
+    message = "Heute Wasserwechsel nicht vergessen 🌊";
+  } else if ([1, 3, 5].includes(day)) {
+    message = "Heute NPK düngen 🌿";
+  } else if ([2, 4].includes(day)) {
+    message = "Heute Ferropol düngen 🌱";
+  }
+
+  if (!message) return;
+
+  navigator.serviceWorker.ready.then((reg) => {
+    reg.showNotification("Aquarium Logbuch", {
+      body: message,
+      icon: "/icon-192.png",
+    });
+
+    localStorage.setItem("lastReminder", todayKey);
+  });
+}, []);
 
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
