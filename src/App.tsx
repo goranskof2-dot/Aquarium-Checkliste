@@ -2461,16 +2461,6 @@ const styles: Record<string, React.CSSProperties> = {
   animationIterationCount: 1,
 },
 
-  splashFishBody: {
-    position: "absolute",
-    left: 8,
-    top: 2,
-    width: 24,
-    height: 14,
-    borderRadius: "50% 55% 55% 50%",
-    background: "linear-gradient(90deg, #e0f2fe 0%, #7dd3fc 55%, #22d3ee 100%)",
-    boxShadow: "0 0 12px rgba(125,211,252,0.4)",
-  },
 
   splashFishTail: {
     position: "absolute",
