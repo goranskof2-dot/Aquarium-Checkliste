@@ -2462,16 +2462,6 @@ const styles: Record<string, React.CSSProperties> = {
 },
 
 
-  splashFishTail: {
-    position: "absolute",
-    left: 0,
-    top: 4,
-    width: 0,
-    height: 0,
-    borderTop: "5px solid transparent",
-    borderBottom: "5px solid transparent",
-    borderRight: "10px solid #67e8f9",
-  },
 
   bubbleLayer: {
   position: "absolute",
