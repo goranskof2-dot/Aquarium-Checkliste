@@ -251,16 +251,41 @@ export default function App() {
     }
   }
 
-  function sendTestNotification() {
-    if (!("Notification" in window) || Notification.permission !== "granted") {
-      alert("Bitte zuerst Benachrichtigungen aktivieren.");
+  async function sendTestNotification() {
+  if (!("Notification" in window)) {
+    alert("Benachrichtigungen werden nicht unterstützt.");
+    return;
+  }
+
+  if (Notification.permission !== "granted") {
+    alert("Bitte zuerst Benachrichtigungen aktivieren.");
+    return;
+  }
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+
+      await registration.showNotification("Aquarium Logbuch", {
+        body: "Zeit für Dünger oder Wasserwechsel 🌊",
+        icon: "/icon-192.png",
+        tag: "aquarium-test",
+      });
+
+      console.log("Notification über Service Worker gesendet");
       return;
     }
 
+    // Fallback
     new Notification("Aquarium Logbuch", {
       body: "Zeit für Dünger oder Wasserwechsel 🌊",
     });
+
+  } catch (err) {
+    console.error(err);
+    alert("Fehler bei Benachrichtigung");
   }
+}
 
   async function refreshCloudState() {
     try {
