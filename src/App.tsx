@@ -5,6 +5,7 @@ import {
   Droplets,
   FlaskConical,
   LineChart as LineChartIcon,
+  Plus,
   Trash2,
   Upload,
   Waves,
@@ -58,12 +59,25 @@ type Logs = {
   waterChange: WaterChangeLog[];
 };
 
+type DosageMap = Record<
+  string,
+  {
+    ferropol: string;
+    npk: string;
+    tages: string;
+  }
+>;
+
 type CloudState = {
   selectedAquarium: string;
   logs: Logs;
+  dosage?: DosageMap;
+  aquariums?: Aquarium[];
 };
 
-const AQUARIUMS: Aquarium[] = [
+type TabKey = "dashboard" | "fertilizer" | "water" | "history" | "chart";
+
+const INITIAL_AQUARIUMS: Aquarium[] = [
   { id: "aq200", name: "Aquarium 200 L", liters: 200 },
   { id: "aq126", name: "Aquarium 126 L", liters: 126 },
 ];
@@ -88,7 +102,7 @@ const WEEKDAYS = [
   "Samstag",
 ];
 
-const STORAGE_KEY = "aquarium-logbuch-v7";
+const STORAGE_KEY = "aquarium-logbuch-v8";
 const SUPABASE_URL = "https://sgaqakrwhtwjuyywkhor.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNnYXFha3J3aHR3anV5eXdraG9yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODIwNDEsImV4cCI6MjA4OTI1ODA0MX0.bUd2adZkzKKYSvxAQqeqwQEnaY85PCXCgZ5bkdjO4sM";
@@ -101,6 +115,22 @@ function emptyLogs(): Logs {
     water: [],
     waterChange: [],
   };
+}
+
+function defaultDosage(aquariums: Aquarium[]): DosageMap {
+  return aquariums.reduce<DosageMap>((acc, aq) => {
+    acc[aq.id] = { ferropol: "", npk: "", tages: "" };
+    return acc;
+  }, {});
+}
+
+function mergeDosage(aquariums: Aquarium[], incoming?: DosageMap): DosageMap {
+  const base = defaultDosage(aquariums);
+  if (!incoming) return base;
+  return aquariums.reduce<DosageMap>((acc, aq) => {
+    acc[aq.id] = incoming[aq.id] || base[aq.id];
+    return acc;
+  }, {});
 }
 
 function toLocalISO(date: Date): string {
@@ -133,16 +163,11 @@ function uid(): string {
 
 function App() {
   const [selectedAquarium, setSelectedAquarium] = useState<string>("aq200");
+  const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [timeFilter, setTimeFilter] = useState<string>("all");
+  const [aquariums, setAquariums] = useState<Aquarium[]>(INITIAL_AQUARIUMS);
   const [logs, setLogs] = useState<Logs>(emptyLogs());
-  const [dosage, setDosage] = useState<Record<string,{
-  ferropol:string;
-  npk:string;
-  tages:string;
-}>>({
-  aq200:{ferropol:"",npk:"",tages:""},
-  aq126:{ferropol:"",npk:"",tages:""}
-});
+  const [dosage, setDosage] = useState<DosageMap>(defaultDosage(INITIAL_AQUARIUMS));
   const [cloudReady, setCloudReady] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<string>("Cloud wird verbunden …");
   const [hasLoadedCloud, setHasLoadedCloud] = useState<boolean>(false);
@@ -170,13 +195,16 @@ function App() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-setLogs(parsed.logs || emptyLogs());
-if (parsed.dosage) {
-  setDosage(parsed.dosage);
-}
-if (parsed.selectedAquarium) {
-  setSelectedAquarium(parsed.selectedAquarium);
-}
+
+      const savedAquariums: Aquarium[] = parsed.aquariums || INITIAL_AQUARIUMS;
+      setAquariums(savedAquariums);
+      setLogs(parsed.logs || emptyLogs());
+      setDosage(mergeDosage(savedAquariums, parsed.dosage));
+
+      if (parsed.selectedAquarium) {
+        setSelectedAquarium(parsed.selectedAquarium);
+      }
+
       setSyncStatus("Lokale Daten geladen …");
     } catch (error) {
       console.error("Fehler beim Laden aus localStorage", error);
@@ -184,71 +212,66 @@ if (parsed.selectedAquarium) {
   }, []);
 
   useEffect(() => {
-  async function loadCloudState() {
-    try {
-      const { data, error } = await supabase
-        .from("app_state")
-        .select("id, data")
-        .eq("id", CLOUD_ROW_ID)
-        .maybeSingle();
+    async function loadCloudState() {
+      try {
+        const { data, error } = await supabase
+          .from("app_state")
+          .select("id, data")
+          .eq("id", CLOUD_ROW_ID)
+          .maybeSingle();
 
-      if (error) {
+        if (error) {
+          console.error(error);
+          setSyncStatus("Cloud-Fehler beim Laden");
+          setCloudReady(true);
+          setHasLoadedCloud(true);
+          return;
+        }
+
+        if (data?.data) {
+          const cloudData = data.data as CloudState;
+
+          const cloudAquariums = cloudData.aquariums || INITIAL_AQUARIUMS;
+          setAquariums(cloudAquariums);
+          setLogs(cloudData.logs || emptyLogs());
+          setDosage(mergeDosage(cloudAquariums, cloudData.dosage));
+
+          if (cloudData.selectedAquarium) {
+            setSelectedAquarium(cloudData.selectedAquarium);
+          }
+
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({
+              selectedAquarium: cloudData.selectedAquarium || "aq200",
+              logs: cloudData.logs || emptyLogs(),
+              dosage: mergeDosage(cloudAquariums, cloudData.dosage),
+              aquariums: cloudAquariums,
+            })
+          );
+
+          setSyncStatus("Cloud-Daten geladen");
+        } else {
+          setSyncStatus("Noch keine Cloud-Daten – lokale Daten aktiv");
+        }
+      } catch (error) {
         console.error(error);
-        setSyncStatus("Cloud-Fehler beim Laden");
+        setSyncStatus("Cloud nicht erreichbar");
+      } finally {
         setCloudReady(true);
         setHasLoadedCloud(true);
-        return;
       }
-
-      if (data?.data) {
-        const cloudData = data.data as CloudState & {
-          dosage?: Record<string, { ferropol: string; npk: string; tages: string }>;
-        };
-
-        setLogs(cloudData.logs || emptyLogs());
-
-        if (cloudData.dosage) {
-          setDosage(cloudData.dosage);
-        }
-
-        if (cloudData.selectedAquarium) {
-          setSelectedAquarium(cloudData.selectedAquarium);
-        }
-
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            selectedAquarium: cloudData.selectedAquarium || "aq200",
-            logs: cloudData.logs || emptyLogs(),
-            dosage: cloudData.dosage || {
-              aq200: { ferropol: "", npk: "", tages: "" },
-              aq126: { ferropol: "", npk: "", tages: "" },
-            },
-          })
-        );
-
-        setSyncStatus("Cloud-Daten geladen");
-      } else {
-        setSyncStatus("Noch keine Cloud-Daten – lokale Daten aktiv");
-      }
-    } catch (error) {
-      console.error(error);
-      setSyncStatus("Cloud nicht erreichbar");
-    } finally {
-      setCloudReady(true);
-      setHasLoadedCloud(true);
     }
-  }
 
-  loadCloudState();
-}, []);
+    loadCloudState();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ selectedAquarium, logs, dosage })
+      JSON.stringify({ selectedAquarium, logs, dosage, aquariums })
     );
-  }, [selectedAquarium, logs, dosage]);
+  }, [selectedAquarium, logs, dosage, aquariums]);
 
   useEffect(() => {
     if (!cloudReady || !hasLoadedCloud) return;
@@ -257,13 +280,12 @@ if (parsed.selectedAquarium) {
       try {
         setSyncStatus("Synchronisiert …");
 
-        const payload: CloudState & {
-  dosage: Record<string, { ferropol: string; npk: string; tages: string }>;
-} = {
-  selectedAquarium,
-  logs,
-  dosage,
-};
+        const payload: CloudState = {
+          selectedAquarium,
+          logs,
+          dosage,
+          aquariums,
+        };
 
         const { error } = await supabase.from("app_state").upsert(
           {
@@ -288,7 +310,7 @@ if (parsed.selectedAquarium) {
     }, 500);
 
     return () => window.clearTimeout(timeout);
-  }, [selectedAquarium, logs, dosage, cloudReady, hasLoadedCloud]);
+  }, [selectedAquarium, logs, dosage, aquariums, cloudReady, hasLoadedCloud]);
 
   useEffect(() => {
     setFertilizerForm((prev) => ({ ...prev, aquariumId: selectedAquarium }));
@@ -299,22 +321,23 @@ if (parsed.selectedAquarium) {
   const todayPlan = FERTILIZER_PLAN[today.getDay()] || [];
 
   const aquariumName =
-    AQUARIUMS.find((a) => a.id === selectedAquarium)?.name || "Aquarium";
-  const activeDose = dosage[selectedAquarium] || {
-  ferropol: "",
-  npk: "",
-  tages: "",
-};
+    aquariums.find((a) => a.id === selectedAquarium)?.name || "Aquarium";
 
-function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
-  setDosage((prev) => ({
-    ...prev,
-    [selectedAquarium]: {
-      ...prev[selectedAquarium],
-      [field]: value,
-    },
-  }));
-}
+  const activeDose = dosage[selectedAquarium] || {
+    ferropol: "",
+    npk: "",
+    tages: "",
+  };
+
+  function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
+    setDosage((prev) => ({
+      ...prev,
+      [selectedAquarium]: {
+        ...(prev[selectedAquarium] || { ferropol: "", npk: "", tages: "" }),
+        [field]: value,
+      },
+    }));
+  }
 
   const fertilizerLogs = useMemo(
     () =>
@@ -438,6 +461,34 @@ function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
       }));
   }, [waterLogs, timeFilter]);
 
+  function addAquarium() {
+    const name = window.prompt("Name des neuen Aquariums?");
+    if (!name || !name.trim()) return;
+
+    const litersInput = window.prompt("Wie viele Liter?");
+    if (!litersInput || !litersInput.trim()) return;
+
+    const liters = Number(litersInput.replace(",", "."));
+    if (Number.isNaN(liters) || liters <= 0) {
+      alert("Bitte eine gültige Literzahl eingeben.");
+      return;
+    }
+
+    const id = `aq-${Date.now()}`;
+    const newAquarium: Aquarium = {
+      id,
+      name: name.trim(),
+      liters,
+    };
+
+    setAquariums((prev) => [...prev, newAquarium]);
+    setDosage((prev) => ({
+      ...prev,
+      [id]: { ferropol: "", npk: "", tages: "" },
+    }));
+    setSelectedAquarium(id);
+  }
+
   function addFertilizerLog() {
     if (!fertilizerForm.amount.trim()) return;
     const entry: FertilizerLog = {
@@ -511,12 +562,13 @@ function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
 
   function exportBackup() {
     const backup = {
-  version: 1,
-  exportedAt: new Date().toISOString(),
-  selectedAquarium,
-  logs,
-  dosage,
-};
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      selectedAquarium,
+      logs,
+      dosage,
+      aquariums,
+    };
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
       type: "application/json",
     });
@@ -542,13 +594,18 @@ function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
           alert("Ungültige Backup-Datei.");
           return;
         }
+
+        const importedAquariums: Aquarium[] = data.aquariums || INITIAL_AQUARIUMS;
+
+        setAquariums(importedAquariums);
         setLogs({
           fertilizer: data.logs.fertilizer || [],
           water: data.logs.water || [],
           waterChange: data.logs.waterChange || [],
         });
+        setDosage(mergeDosage(importedAquariums, data.dosage));
+
         if (data.selectedAquarium) setSelectedAquarium(data.selectedAquarium);
-        if (data.dosage) setDosage(data.dosage);
         alert("Backup erfolgreich importiert.");
       } catch {
         alert("Die Datei konnte nicht importiert werden.");
@@ -558,430 +615,395 @@ function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
     event.target.value = "";
   }
 
-  return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        <div style={styles.topBar}>
-          <div>
-            <h1 style={styles.h1}>Aquarium Logbuch</h1>
-            <p style={styles.sub}>
-              Einfaches Handy-Log für Dünger, Wasserwerte und Wasserwechsel.
-            </p>
+  function renderDashboard() {
+    return (
+      <div style={styles.screenGrid}>
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>
+            <CalendarDays size={18} /> Dashboard
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={styles.tabRow}>
-              {AQUARIUMS.map((aq) => (
-                <button
-                  key={aq.id}
-                  onClick={() => setSelectedAquarium(aq.id)}
-                  style={{
-                    ...styles.tab,
-                    ...(selectedAquarium === aq.id ? styles.tabActive : {}),
-                  }}
-                >
-                  {aq.name}
-                </button>
-              ))}
-            </div>
-            <div style={styles.buttonRowWrap}>
-              <button style={styles.secondaryButton} onClick={exportBackup}>
-                <Download size={16} /> Backup exportieren
-              </button>
-              <button
-                style={styles.secondaryButton}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload size={16} /> Backup importieren
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={importBackup}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div style={styles.grid3}>
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>
-              <CalendarDays size={18} /> Dashboard
-            </div>
-            <div style={styles.tipBox}>
-              <div style={styles.valueLabel}>Heute zu tun</div>
-              <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-                {tasksToday.map((task) => (
-                  <div key={task} style={styles.taskRow}>
-                    • {task}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={styles.infoRow}>
-              <span>Letzter Wasserwechsel</span>
-              <strong>
-                {daysSinceWaterChange == null
-                  ? "noch keiner"
-                  : `vor ${daysSinceWaterChange} Tagen`}
-              </strong>
-            </div>
-            <div style={styles.tipBox}>
-              <div style={styles.valueLabel}>Nitrat-Trend</div>
-              <strong>{no3TrendText}</strong>
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>
-              <CalendarDays size={18} /> Heute
-            </div>
-            <div style={styles.muted}>
-              {WEEKDAYS[today.getDay()]} · {today.toLocaleDateString("de-DE")}
-            </div>
-            <div style={styles.badgeRow}>
-              {todayPlan.map((item) => (
-                <span key={item} style={styles.badge}>
-                  {item}
-                </span>
-              ))}
-            </div>
-            <div style={styles.columnGap}>
-              <button
-                style={styles.primaryButton}
-                onClick={() => quickLogToday("NPK")}
-              >
-                NPK als erledigt speichern
-              </button>
-              <button
-                style={styles.primaryButton}
-                onClick={() => quickLogToday("Ferropol")}
-              >
-                Ferropol als erledigt speichern
-              </button>
-              <button
-                style={styles.primaryButton}
-                onClick={() => quickLogToday("Tagesdünger")}
-              >
-                Tagesdünger als erledigt speichern
-              </button>
-              {today.getDay() === 1 && (
-                <button
-                  style={styles.primaryButton}
-                  onClick={quickLogWaterChange}
-                >
-                  Wasserwechsel als erledigt speichern
-                </button>
-              )}
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>
-              <Droplets size={18} /> {aquariumName}
-            </div>
-            <div style={styles.infoRow}>
-              <span>Letzte Messung</span>
-              <strong>
-                {latestWater ? formatDate(latestWater.date) : "noch keine"}
-              </strong>
-            </div>
-            <div style={styles.infoRow}>
-              <span>Letzter Wasserwechsel</span>
-              <strong>
-                {latestWaterChange
-                  ? formatDate(latestWaterChange.date)
-                  : "noch keiner"}
-              </strong>
-            </div>
-            <div style={styles.valueGrid}>
-              <div style={styles.valueCard}>
-                <div style={styles.valueLabel}>NO3</div>
-                <div style={styles.valueNum}>{latestWater?.no3 || "-"}</div>
-              </div>
-              <div style={styles.valueCard}>
-                <div style={styles.valueLabel}>NO2</div>
-                <div style={styles.valueNum}>{latestWater?.no2 || "-"}</div>
-              </div>
-              <div style={styles.valueCard}>
-                <div style={styles.valueLabel}>pH</div>
-                <div style={styles.valueNum}>{latestWater?.ph || "-"}</div>
-              </div>
-              <div style={styles.valueCard}>
-                <div style={styles.valueLabel}>O₂</div>
-                <div style={styles.valueNum}>{latestWater?.o2 || "-"}</div>
-              </div>
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>
-              <LineChartIcon size={18} /> Überblick
-            </div>
-            <div style={styles.infoRow}>
-              <span>Dünger-Einträge</span>
-              <strong>{fertilizerLogs.length}</strong>
-            </div>
-            <div style={styles.infoRow}>
-              <span>Wasser-Messungen</span>
-              <strong>{waterLogs.length}</strong>
-            </div>
-            <div style={styles.infoRow}>
-              <span>Wasserwechsel</span>
-              <strong>{waterChangeLogs.length}</strong>
-            </div>
-            <div style={styles.tipBox}>
-              Tipp: Auf dem Handy als Startbildschirm-App speichern. Über den
-              Backup-Export kannst du deine Daten sichern.
-            </div>
-            <div style={styles.syncBox}>
-              <strong>Sync:</strong> {syncStatus}
-            </div>
-          </section>
-        </div>
-
-        <div style={styles.grid2}>
-          <section style={styles.card}>
-  <div style={styles.cardTitle}>
-    <FlaskConical size={18} /> Standard-Dosierung
-  </div>
-
-  <div style={styles.tipBox}>
-    Hier kannst du dir merken, wieviel du normalerweise in dieses Aquarium dosierst.
-    Das ist nur ein Merkzettel und unabhängig von den täglichen Einträgen.
-  </div>
-
-  <div style={styles.formGrid}>
-    <label style={styles.label}>
-      Ferropol
-      <input
-        style={styles.input}
-        placeholder="z. B. 10 ml"
-        value={activeDose.ferropol}
-        onChange={(e) => updateDose("ferropol", e.target.value)}
-      />
-    </label>
-
-    <label style={styles.label}>
-      NPK
-      <input
-        style={styles.input}
-        placeholder="z. B. 8 ml"
-        value={activeDose.npk}
-        onChange={(e) => updateDose("npk", e.target.value)}
-      />
-    </label>
-
-    <label style={styles.label}>
-      Tagesdünger
-      <input
-        style={styles.input}
-        placeholder="z. B. 5 ml"
-        value={activeDose.tages}
-        onChange={(e) => updateDose("tages", e.target.value)}
-      />
-    </label>
-  </div>
-</section>
-          <section style={styles.card}>
-            <div style={styles.sectionHead}>
-              <div style={styles.cardTitle}>
-                <FlaskConical size={18} /> Dünger eintragen
-              </div>
-            </div>
-            <div style={styles.formGrid}>
-              <label style={styles.label}>
-                Datum
-                <input
-                  style={styles.input}
-                  type="date"
-                  value={fertilizerForm.date}
-                  onChange={(e) =>
-                    setFertilizerForm({
-                      ...fertilizerForm,
-                      date: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label style={styles.label}>
-                Dünger
-                <select
-                  style={styles.input}
-                  value={fertilizerForm.fertilizer}
-                  onChange={(e) =>
-                    setFertilizerForm({
-                      ...fertilizerForm,
-                      fertilizer: e.target.value,
-                    })
-                  }
-                >
-                  <option value="Ferropol">Ferropol</option>
-                  <option value="NPK">NPK</option>
-                  <option value="Tagesdünger">Tagesdünger</option>
-                </select>
-              </label>
-              <label style={styles.label}>
-                Menge
-                <input
-                  style={styles.input}
-                  placeholder="z. B. 5 ml"
-                  value={fertilizerForm.amount}
-                  onChange={(e) =>
-                    setFertilizerForm({
-                      ...fertilizerForm,
-                      amount: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <button style={styles.primaryButton} onClick={addFertilizerLog}>
-                Speichern
-              </button>
-            </div>
-
-            <div style={styles.historyList}>
-              {fertilizerLogs.length === 0 ? (
-                <div style={styles.emptyBox}>
-                  Noch keine Dünger-Einträge für dieses Aquarium.
+          <div style={styles.tipBox}>
+            <div style={styles.valueLabel}>Heute zu tun</div>
+            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+              {tasksToday.map((task) => (
+                <div key={task} style={styles.taskRow}>
+                  • {task}
                 </div>
-              ) : (
-                fertilizerLogs.map((entry) => (
-                  <div key={entry.id} style={styles.historyItemRow}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{entry.fertilizer}</div>
-                      <div style={styles.smallMuted}>
-                        {formatDate(entry.date)} · {entry.amount}
-                      </div>
+              ))}
+            </div>
+          </div>
+          <div style={styles.infoRow}>
+            <span>Letzter Wasserwechsel</span>
+            <strong>
+              {daysSinceWaterChange == null
+                ? "noch keiner"
+                : `vor ${daysSinceWaterChange} Tagen`}
+            </strong>
+          </div>
+          <div style={styles.tipBox}>
+            <div style={styles.valueLabel}>Nitrat-Trend</div>
+            <strong>{no3TrendText}</strong>
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>
+            <CalendarDays size={18} /> Heute
+          </div>
+          <div style={styles.muted}>
+            {WEEKDAYS[today.getDay()]} · {today.toLocaleDateString("de-DE")}
+          </div>
+          <div style={styles.badgeRow}>
+            {todayPlan.map((item) => (
+              <span key={item} style={styles.badge}>
+                {item}
+              </span>
+            ))}
+          </div>
+          <div style={styles.columnGap}>
+            <button
+              style={styles.primaryButton}
+              onClick={() => quickLogToday("NPK")}
+            >
+              NPK als erledigt speichern
+            </button>
+            <button
+              style={styles.primaryButton}
+              onClick={() => quickLogToday("Ferropol")}
+            >
+              Ferropol als erledigt speichern
+            </button>
+            <button
+              style={styles.primaryButton}
+              onClick={() => quickLogToday("Tagesdünger")}
+            >
+              Tagesdünger als erledigt speichern
+            </button>
+            {today.getDay() === 1 && (
+              <button
+                style={styles.primaryButton}
+                onClick={quickLogWaterChange}
+              >
+                Wasserwechsel als erledigt speichern
+              </button>
+            )}
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>
+            <Droplets size={18} /> {aquariumName}
+          </div>
+          <div style={styles.infoRow}>
+            <span>Letzte Messung</span>
+            <strong>
+              {latestWater ? formatDate(latestWater.date) : "noch keine"}
+            </strong>
+          </div>
+          <div style={styles.infoRow}>
+            <span>Letzter Wasserwechsel</span>
+            <strong>
+              {latestWaterChange
+                ? formatDate(latestWaterChange.date)
+                : "noch keiner"}
+            </strong>
+          </div>
+          <div style={styles.valueGrid}>
+            <div style={styles.valueCard}>
+              <div style={styles.valueLabel}>NO3</div>
+              <div style={styles.valueNum}>{latestWater?.no3 || "-"}</div>
+            </div>
+            <div style={styles.valueCard}>
+              <div style={styles.valueLabel}>NO2</div>
+              <div style={styles.valueNum}>{latestWater?.no2 || "-"}</div>
+            </div>
+            <div style={styles.valueCard}>
+              <div style={styles.valueLabel}>pH</div>
+              <div style={styles.valueNum}>{latestWater?.ph || "-"}</div>
+            </div>
+            <div style={styles.valueCard}>
+              <div style={styles.valueLabel}>O₂</div>
+              <div style={styles.valueNum}>{latestWater?.o2 || "-"}</div>
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>
+            <LineChartIcon size={18} /> Überblick
+          </div>
+          <div style={styles.infoRow}>
+            <span>Dünger-Einträge</span>
+            <strong>{fertilizerLogs.length}</strong>
+          </div>
+          <div style={styles.infoRow}>
+            <span>Wasser-Messungen</span>
+            <strong>{waterLogs.length}</strong>
+          </div>
+          <div style={styles.infoRow}>
+            <span>Wasserwechsel</span>
+            <strong>{waterChangeLogs.length}</strong>
+          </div>
+          <div style={styles.tipBox}>
+            Tipp: Auf dem Handy als Startbildschirm-App speichern. Über den
+            Backup-Export kannst du deine Daten sichern.
+          </div>
+          <div style={styles.syncBox}>
+            <strong>Sync:</strong> {syncStatus}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderFertilizer() {
+    return (
+      <div style={styles.screenGrid}>
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>
+            <FlaskConical size={18} /> Standard-Dosierung
+          </div>
+
+          <div style={styles.tipBox}>
+            Hier kannst du dir merken, wieviel du normalerweise in dieses
+            Aquarium dosierst. Das ist nur ein Merkzettel und unabhängig von den
+            täglichen Einträgen.
+          </div>
+
+          <div style={styles.formGrid}>
+            <label style={styles.label}>
+              Ferropol
+              <input
+                style={styles.input}
+                placeholder="z. B. 10 ml"
+                value={activeDose.ferropol}
+                onChange={(e) => updateDose("ferropol", e.target.value)}
+              />
+            </label>
+
+            <label style={styles.label}>
+              NPK
+              <input
+                style={styles.input}
+                placeholder="z. B. 8 ml"
+                value={activeDose.npk}
+                onChange={(e) => updateDose("npk", e.target.value)}
+              />
+            </label>
+
+            <label style={styles.label}>
+              Tagesdünger
+              <input
+                style={styles.input}
+                placeholder="z. B. 5 ml"
+                value={activeDose.tages}
+                onChange={(e) => updateDose("tages", e.target.value)}
+              />
+            </label>
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.sectionHead}>
+            <div style={styles.cardTitle}>
+              <FlaskConical size={18} /> Dünger eintragen
+            </div>
+          </div>
+          <div style={styles.formGrid}>
+            <label style={styles.label}>
+              Datum
+              <input
+                style={styles.input}
+                type="date"
+                value={fertilizerForm.date}
+                onChange={(e) =>
+                  setFertilizerForm({
+                    ...fertilizerForm,
+                    date: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label style={styles.label}>
+              Dünger
+              <select
+                style={styles.input}
+                value={fertilizerForm.fertilizer}
+                onChange={(e) =>
+                  setFertilizerForm({
+                    ...fertilizerForm,
+                    fertilizer: e.target.value,
+                  })
+                }
+              >
+                <option value="Ferropol">Ferropol</option>
+                <option value="NPK">NPK</option>
+                <option value="Tagesdünger">Tagesdünger</option>
+              </select>
+            </label>
+            <label style={styles.label}>
+              Menge
+              <input
+                style={styles.input}
+                placeholder="z. B. 5 ml"
+                value={fertilizerForm.amount}
+                onChange={(e) =>
+                  setFertilizerForm({
+                    ...fertilizerForm,
+                    amount: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <button style={styles.primaryButton} onClick={addFertilizerLog}>
+              Speichern
+            </button>
+          </div>
+
+          <div style={styles.historyList}>
+            {fertilizerLogs.length === 0 ? (
+              <div style={styles.emptyBox}>
+                Noch keine Dünger-Einträge für dieses Aquarium.
+              </div>
+            ) : (
+              fertilizerLogs.map((entry) => (
+                <div key={entry.id} style={styles.historyItemRow}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{entry.fertilizer}</div>
+                    <div style={styles.smallMuted}>
+                      {formatDate(entry.date)} · {entry.amount}
+                    </div>
+                  </div>
+                  <button
+                    style={styles.iconButton}
+                    onClick={() => removeLog("fertilizer", entry.id)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderWater() {
+    return (
+      <div style={styles.screenGrid}>
+        <section style={styles.card}>
+          <div style={styles.sectionHead}>
+            <div style={styles.cardTitle}>
+              <Droplets size={18} /> Wasserwerte eintragen
+            </div>
+          </div>
+          <div style={styles.formGrid}>
+            <label style={styles.label}>
+              Datum
+              <input
+                style={styles.input}
+                type="date"
+                value={waterForm.date}
+                onChange={(e) =>
+                  setWaterForm({ ...waterForm, date: e.target.value })
+                }
+              />
+            </label>
+            <label style={styles.label}>
+              NO3
+              <input
+                style={styles.input}
+                value={waterForm.no3}
+                onChange={(e) =>
+                  setWaterForm({ ...waterForm, no3: e.target.value })
+                }
+              />
+            </label>
+            <label style={styles.label}>
+              NO2
+              <input
+                style={styles.input}
+                value={waterForm.no2}
+                onChange={(e) =>
+                  setWaterForm({ ...waterForm, no2: e.target.value })
+                }
+              />
+            </label>
+            <label style={styles.label}>
+              pH
+              <input
+                style={styles.input}
+                value={waterForm.ph}
+                onChange={(e) =>
+                  setWaterForm({ ...waterForm, ph: e.target.value })
+                }
+              />
+            </label>
+            <label style={styles.label}>
+              O₂
+              <input
+                style={styles.input}
+                value={waterForm.o2}
+                onChange={(e) =>
+                  setWaterForm({ ...waterForm, o2: e.target.value })
+                }
+              />
+            </label>
+            <button style={styles.primaryButton} onClick={addWaterLog}>
+              Speichern
+            </button>
+          </div>
+
+          <div style={styles.historyList}>
+            {waterLogs.length === 0 ? (
+              <div style={styles.emptyBox}>
+                Noch keine Wasserwerte für dieses Aquarium.
+              </div>
+            ) : (
+              waterLogs.map((entry) => (
+                <div key={entry.id} style={styles.historyItemColumn}>
+                  <div style={styles.historyHeader}>
+                    <div style={{ fontWeight: 600 }}>
+                      Messung vom {formatDate(entry.date)}
                     </div>
                     <button
                       style={styles.iconButton}
-                      onClick={() => removeLog("fertilizer", entry.id)}
+                      onClick={() => removeLog("water", entry.id)}
                     >
                       <Trash2 size={16} />
                     </button>
                   </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.sectionHead}>
-              <div style={styles.cardTitle}>
-                <Droplets size={18} /> Wasserwerte eintragen
-              </div>
-            </div>
-            <div style={styles.formGrid}>
-              <label style={styles.label}>
-                Datum
-                <input
-                  style={styles.input}
-                  type="date"
-                  value={waterForm.date}
-                  onChange={(e) =>
-                    setWaterForm({ ...waterForm, date: e.target.value })
-                  }
-                />
-              </label>
-              <label style={styles.label}>
-                NO3
-                <input
-                  style={styles.input}
-                  value={waterForm.no3}
-                  onChange={(e) =>
-                    setWaterForm({ ...waterForm, no3: e.target.value })
-                  }
-                />
-              </label>
-              <label style={styles.label}>
-                NO2
-                <input
-                  style={styles.input}
-                  value={waterForm.no2}
-                  onChange={(e) =>
-                    setWaterForm({ ...waterForm, no2: e.target.value })
-                  }
-                />
-              </label>
-              <label style={styles.label}>
-                pH
-                <input
-                  style={styles.input}
-                  value={waterForm.ph}
-                  onChange={(e) =>
-                    setWaterForm({ ...waterForm, ph: e.target.value })
-                  }
-                />
-              </label>
-              <label style={styles.label}>
-                O₂
-                <input
-                  style={styles.input}
-                  value={waterForm.o2}
-                  onChange={(e) =>
-                    setWaterForm({ ...waterForm, o2: e.target.value })
-                  }
-                />
-              </label>
-              <button style={styles.primaryButton} onClick={addWaterLog}>
-                Speichern
-              </button>
-            </div>
-
-            <div style={styles.historyList}>
-              {waterLogs.length === 0 ? (
-                <div style={styles.emptyBox}>
-                  Noch keine Wasserwerte für dieses Aquarium.
-                </div>
-              ) : (
-                waterLogs.map((entry) => (
-                  <div key={entry.id} style={styles.historyItemColumn}>
-                    <div style={styles.historyHeader}>
-                      <div style={{ fontWeight: 600 }}>
-                        Messung vom {formatDate(entry.date)}
-                      </div>
-                      <button
-                        style={styles.iconButton}
-                        onClick={() => removeLog("water", entry.id)}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                  <div style={styles.valueGrid}>
+                    <div style={styles.valueCard}>
+                      <div style={styles.valueLabel}>NO3</div>
+                      <div style={styles.valueNumSmall}>{entry.no3 || "-"}</div>
                     </div>
-                    <div style={styles.valueGrid}>
-                      <div style={styles.valueCard}>
-                        <div style={styles.valueLabel}>NO3</div>
-                        <div style={styles.valueNumSmall}>
-                          {entry.no3 || "-"}
-                        </div>
-                      </div>
-                      <div style={styles.valueCard}>
-                        <div style={styles.valueLabel}>NO2</div>
-                        <div style={styles.valueNumSmall}>
-                          {entry.no2 || "-"}
-                        </div>
-                      </div>
-                      <div style={styles.valueCard}>
-                        <div style={styles.valueLabel}>pH</div>
-                        <div style={styles.valueNumSmall}>
-                          {entry.ph || "-"}
-                        </div>
-                      </div>
-                      <div style={styles.valueCard}>
-                        <div style={styles.valueLabel}>O₂</div>
-                        <div style={styles.valueNumSmall}>
-                          {entry.o2 || "-"}
-                        </div>
-                      </div>
+                    <div style={styles.valueCard}>
+                      <div style={styles.valueLabel}>NO2</div>
+                      <div style={styles.valueNumSmall}>{entry.no2 || "-"}</div>
+                    </div>
+                    <div style={styles.valueCard}>
+                      <div style={styles.valueLabel}>pH</div>
+                      <div style={styles.valueNumSmall}>{entry.ph || "-"}</div>
+                    </div>
+                    <div style={styles.valueCard}>
+                      <div style={styles.valueLabel}>O₂</div>
+                      <div style={styles.valueNumSmall}>{entry.o2 || "-"}</div>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
+  function renderHistory() {
+    return (
+      <div style={styles.screenGrid}>
         <section style={styles.card}>
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Wochenübersicht
@@ -1126,7 +1148,13 @@ function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
             </div>
           </div>
         </section>
+      </div>
+    );
+  }
 
+  function renderChart() {
+    return (
+      <div style={styles.screenGrid}>
         <section style={styles.card}>
           <div style={styles.sectionHead}>
             <div style={styles.cardTitle}>
@@ -1244,6 +1272,120 @@ function updateDose(field: "ferropol" | "npk" | "tages", value: string) {
           )}
         </section>
       </div>
+    );
+  }
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.containerWithBottomNav}>
+        <div style={styles.topBar}>
+          <div>
+            <h1 style={styles.h1}>Aquarium Logbuch</h1>
+            <p style={styles.sub}>
+              Einfaches Handy-Log für Dünger, Wasserwerte und Wasserwechsel.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={styles.tabRow}>
+              {aquariums.map((aq) => (
+                <button
+                  key={aq.id}
+                  onClick={() => setSelectedAquarium(aq.id)}
+                  style={{
+                    ...styles.tab,
+                    ...(selectedAquarium === aq.id ? styles.tabActive : {}),
+                  }}
+                >
+                  {aq.name}
+                </button>
+              ))}
+
+              <button style={styles.addAquariumButton} onClick={addAquarium}>
+                <Plus size={16} />
+              </button>
+            </div>
+
+            <div style={styles.buttonRowWrap}>
+              <button style={styles.secondaryButton} onClick={exportBackup}>
+                <Download size={16} /> Backup exportieren
+              </button>
+              <button
+                style={styles.secondaryButton}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={16} /> Backup importieren
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json"
+                style={{ display: "none" }}
+                onChange={importBackup}
+              />
+            </div>
+          </div>
+        </div>
+
+        {activeTab === "dashboard" && renderDashboard()}
+        {activeTab === "fertilizer" && renderFertilizer()}
+        {activeTab === "water" && renderWater()}
+        {activeTab === "history" && renderHistory()}
+        {activeTab === "chart" && renderChart()}
+      </div>
+
+      <div style={styles.bottomNav}>
+        <button
+          style={{
+            ...styles.bottomNavButton,
+            ...(activeTab === "dashboard" ? styles.bottomNavButtonActive : {}),
+          }}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          <CalendarDays size={18} />
+          <span>Start</span>
+        </button>
+        <button
+          style={{
+            ...styles.bottomNavButton,
+            ...(activeTab === "fertilizer" ? styles.bottomNavButtonActive : {}),
+          }}
+          onClick={() => setActiveTab("fertilizer")}
+        >
+          <FlaskConical size={18} />
+          <span>Dünger</span>
+        </button>
+        <button
+          style={{
+            ...styles.bottomNavButton,
+            ...(activeTab === "water" ? styles.bottomNavButtonActive : {}),
+          }}
+          onClick={() => setActiveTab("water")}
+        >
+          <Droplets size={18} />
+          <span>Messung</span>
+        </button>
+        <button
+          style={{
+            ...styles.bottomNavButton,
+            ...(activeTab === "history" ? styles.bottomNavButtonActive : {}),
+          }}
+          onClick={() => setActiveTab("history")}
+        >
+          <Waves size={18} />
+          <span>Verlauf</span>
+        </button>
+        <button
+          style={{
+            ...styles.bottomNavButton,
+            ...(activeTab === "chart" ? styles.bottomNavButtonActive : {}),
+          }}
+          onClick={() => setActiveTab("chart")}
+        >
+          <LineChartIcon size={18} />
+          <span>Diagramm</span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -1256,9 +1398,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "Inter, system-ui, sans-serif",
     color: "#0f172a",
   },
-  container: {
+  containerWithBottomNav: {
     maxWidth: 1200,
     margin: "0 auto",
+    display: "grid",
+    gap: 16,
+    paddingBottom: 96,
+  },
+  screenGrid: {
     display: "grid",
     gap: 16,
   },
@@ -1271,11 +1418,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   h1: { margin: 0, fontSize: 32 },
   sub: { margin: "6px 0 0", color: "#475569" },
-  grid2: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-    gap: 16,
-  },
   grid3: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
@@ -1363,6 +1505,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: 8,
     flexWrap: "wrap",
+    alignItems: "center",
   },
   tab: {
     border: "1px solid #cbd5e1",
@@ -1376,6 +1519,16 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#0f172a",
     color: "white",
     borderColor: "#0f172a",
+  },
+  addAquariumButton: {
+    border: "1px dashed #94a3b8",
+    borderRadius: 14,
+    padding: "10px 12px",
+    background: "white",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   infoRow: {
     display: "flex",
@@ -1531,6 +1684,38 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "#334155",
     lineHeight: 1.4,
+  },
+  bottomNav: {
+    position: "fixed",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: "rgba(255,255,255,0.96)",
+    backdropFilter: "blur(10px)",
+    borderTop: "1px solid #e2e8f0",
+    display: "grid",
+    gridTemplateColumns: "repeat(5, 1fr)",
+    gap: 8,
+    padding: "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))",
+    zIndex: 1000,
+  },
+  bottomNavButton: {
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    borderRadius: 12,
+    padding: "8px 4px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+    fontSize: 12,
+    color: "#475569",
+  },
+  bottomNavButtonActive: {
+    background: "#eef2ff",
+    color: "#0f172a",
+    fontWeight: 700,
   },
 };
 
