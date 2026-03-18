@@ -850,7 +850,7 @@ export default function App() {
       </div>
     );
   });
-
+    
   return (
     <div style={styles.splashOverlay}>
       <div style={styles.splashGlowA} />
