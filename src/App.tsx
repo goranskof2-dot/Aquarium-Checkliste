@@ -167,6 +167,7 @@ function uid(): string {
 }
 
 export default function App() {
+  const [darkMode, setDarkMode] = useState(false);
   const [selectedAquarium, setSelectedAquarium] = useState<string>("aq200");
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [timeFilter, setTimeFilter] = useState<string>("all");
@@ -1701,7 +1702,13 @@ export default function App() {
 
       {showSplash && renderSplash()}
 
-      <div style={styles.page}>
+      <div
+  style={{
+    ...styles.page,
+    background: darkMode ? "#020617" : "#f8fafc",
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
         <div style={styles.containerWithBottomNav}>
           <div style={styles.topBar}>
             <div style={{ maxWidth: 720 }}>
@@ -1710,6 +1717,18 @@ export default function App() {
                 Ruhiges, modernes Pflege-Log für Dünger, Wasserwerte,
                 Wasserwechsel und Verlauf.
               </p>
+              <button
+  style={{
+    padding: "8px 12px",
+    borderRadius: 10,
+    border: "1px solid #ccc",
+    cursor: "pointer",
+    marginTop: 10,
+  }}
+  onClick={() => setDarkMode(!darkMode)}
+>
+  {darkMode ? "🌞 Light Mode" : "🌙 Dark Mode"}
+</button>
 
               <div style={styles.heroMetaRow}>
                 <div style={styles.heroMetaChip}>
