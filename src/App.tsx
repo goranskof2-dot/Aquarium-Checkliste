@@ -105,11 +105,12 @@ const WEEKDAYS = [
   "Samstag",
 ];
 
-const STORAGE_KEY = "aquarium-logbuch-v9";
+const STORAGE_KEY = "aquarium-logbuch-v10";
+const CLOUD_ROW_ID = "shared";
+
 const SUPABASE_URL = "https://sgaqakrwhtwjuyywkhor.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNnYXFha3J3aHR3anV5eXdraG9yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2ODIwNDEsImV4cCI6MjA4OTI1ODA0MX0.bUd2adZkzKKYSvxAQqeqwQEnaY85PCXCgZ5bkdjO4sM";
-const CLOUD_ROW_ID = "shared";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -167,7 +168,14 @@ function uid(): string {
 }
 
 export default function App() {
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("aquarium-darkmode") === "true";
+    } catch {
+      return false;
+    }
+  });
+
   const [selectedAquarium, setSelectedAquarium] = useState<string>("aq200");
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [timeFilter, setTimeFilter] = useState<string>("all");
@@ -212,45 +220,17 @@ export default function App() {
   });
 
   useEffect(() => {
+    localStorage.setItem("aquarium-darkmode", String(darkMode));
+    document.body.style.background = darkMode ? "#020617" : "#f8fafc";
+  }, [darkMode]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       setShowSplash(false);
     }, 2600);
 
     return () => window.clearTimeout(timer);
   }, []);
-  
-  useEffect(() => {
-  if (Notification.permission !== "granted") return;
-
-  const today = new Date();
-  const day = today.getDay();
-  const todayKey = today.toISOString().slice(0, 10);
-
-  const lastShown = localStorage.getItem("lastReminder");
-
-  if (lastShown === todayKey) return;
-
-  let message = "";
-
-  if (day === 1) {
-    message = "Heute Wasserwechsel nicht vergessen 🌊";
-  } else if ([1, 3, 5].includes(day)) {
-    message = "Heute NPK düngen 🌿";
-  } else if ([2, 4].includes(day)) {
-    message = "Heute Ferropol düngen 🌱";
-  }
-
-  if (!message) return;
-
-  navigator.serviceWorker.ready.then((reg) => {
-    reg.showNotification("Aquarium Logbuch", {
-      body: message,
-      icon: "/icon-192.png",
-    });
-
-    localStorage.setItem("lastReminder", todayKey);
-  });
-}, []);
 
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -264,6 +244,38 @@ export default function App() {
         console.error("Service Worker konnte nicht registriert werden:", err);
       });
     }
+  }, []);
+
+  useEffect(() => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+
+    const today = new Date();
+    const day = today.getDay();
+    const todayKey = today.toISOString().slice(0, 10);
+    const lastShown = localStorage.getItem("lastReminder");
+
+    if (lastShown === todayKey) return;
+
+    let message = "";
+
+    if (day === 1) {
+      message = "Heute Wasserwechsel nicht vergessen 🌊";
+    } else if ([1, 3, 5].includes(day)) {
+      message = "Heute NPK düngen 🌿";
+    } else if ([2, 4].includes(day)) {
+      message = "Heute Ferropol düngen 🌱";
+    }
+
+    if (!message) return;
+
+    navigator.serviceWorker.ready.then((reg) => {
+      reg.showNotification("Aquarium Logbuch", {
+        body: message,
+        icon: "/icon-192.png",
+      });
+      localStorage.setItem("lastReminder", todayKey);
+    });
   }, []);
 
   async function enableNotifications() {
@@ -286,40 +298,35 @@ export default function App() {
   }
 
   async function sendTestNotification() {
-  if (!("Notification" in window)) {
-    alert("Benachrichtigungen werden nicht unterstützt.");
-    return;
-  }
-
-  if (Notification.permission !== "granted") {
-    alert("Bitte zuerst Benachrichtigungen aktivieren.");
-    return;
-  }
-
-  try {
-    if ("serviceWorker" in navigator) {
-      const registration = await navigator.serviceWorker.ready;
-
-      await registration.showNotification("Aquarium Logbuch", {
-        body: "Zeit für Dünger oder Wasserwechsel 🌊",
-        icon: "/icon-192.png",
-        tag: "aquarium-test",
-      });
-
-      console.log("Notification über Service Worker gesendet");
+    if (!("Notification" in window)) {
+      alert("Benachrichtigungen werden nicht unterstützt.");
       return;
     }
 
-    // Fallback
-    new Notification("Aquarium Logbuch", {
-      body: "Zeit für Dünger oder Wasserwechsel 🌊",
-    });
+    if (Notification.permission !== "granted") {
+      alert("Bitte zuerst Benachrichtigungen aktivieren.");
+      return;
+    }
 
-  } catch (err) {
-    console.error(err);
-    alert("Fehler bei Benachrichtigung");
+    try {
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification("Aquarium Logbuch", {
+          body: "Zeit für Dünger oder Wasserwechsel 🌊",
+          icon: "/icon-192.png",
+          tag: "aquarium-test",
+        });
+        return;
+      }
+
+      new Notification("Aquarium Logbuch", {
+        body: "Zeit für Dünger oder Wasserwechsel 🌊",
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Fehler bei Benachrichtigung");
+    }
   }
-}
 
   async function refreshCloudState() {
     try {
@@ -814,103 +821,295 @@ export default function App() {
     event.target.value = "";
   }
 
-  function renderSplash() {
-  const fish = Array.from({ length: 28 }).map((_, index) => {
-    const lane = index % 14;
-    const isReverse = index % 5 === 0 || index % 6 === 0;
-    const top = 6 + lane * 6.2;
-    const delay = index * 0.16;
-    const duration = 6.5 + (index % 6) * 0.9;
-    const scale = 0.55 + (index % 5) * 0.16;
-    const opacity = 0.28 + (index % 6) * 0.1;
+  const ui = {
+    text: darkMode ? "#e2e8f0" : "#0f172a",
+    subText: darkMode ? "#94a3b8" : "#475569",
+    softText: darkMode ? "#cbd5e1" : "#334155",
+    mutedText: darkMode ? "#94a3b8" : "#64748b",
 
-    return (
-      <div
-        key={index}
-        style={{
-          ...styles.splashFish,
-          top: `${top}%`,
-          animationDelay: `${delay}s`,
-          animationDuration: `${duration}s`,
-          opacity,
-          transform: isReverse ? "scaleX(-1)" : "none",
-        }}
-      >
+    pageBg: darkMode
+      ? "radial-gradient(circle at top, rgba(56,189,248,0.10), transparent 30%), linear-gradient(180deg, #020617 0%, #07111f 45%, #0f172a 100%)"
+      : "radial-gradient(circle at top, rgba(56,189,248,0.18), transparent 30%), linear-gradient(180deg, #f4fbff 0%, #eef6fb 45%, #f8fafc 100%)",
+
+    topBarBg: darkMode ? "rgba(15,23,42,0.9)" : "rgba(255,255,255,0.62)",
+    topBarBorder: darkMode
+      ? "1px solid rgba(148,163,184,0.18)"
+      : "1px solid rgba(255,255,255,0.75)",
+
+    surface: darkMode ? "rgba(15,23,42,0.82)" : "rgba(255,255,255,0.78)",
+    surfaceBorder: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : "1px solid rgba(255,255,255,0.7)",
+
+    heroSurface: darkMode
+      ? "linear-gradient(135deg, rgba(14,165,233,0.16) 0%, rgba(34,197,94,0.05) 100%), rgba(15,23,42,0.88)"
+      : "linear-gradient(135deg, rgba(14,165,233,0.18) 0%, rgba(34,197,94,0.08) 100%), rgba(255,255,255,0.72)",
+
+    panel: darkMode ? "rgba(30,41,59,0.72)" : "rgba(241,245,249,0.85)",
+    panelBorder: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : "1px solid rgba(226,232,240,0.9)",
+
+    item: darkMode ? "rgba(15,23,42,0.95)" : "rgba(255,255,255,0.94)",
+    itemBorder: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : "1px solid #e2e8f0",
+
+    inputBg: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
+    inputBorder: darkMode
+      ? "1px solid rgba(148,163,184,0.22)"
+      : "1px solid #cbd5e1",
+
+    badgeBg: darkMode ? "rgba(30,41,59,0.9)" : "#e2e8f0",
+    badgeText: darkMode ? "#e2e8f0" : "#0f172a",
+
+    badgePrimaryBg: darkMode
+      ? "rgba(56,189,248,0.18)"
+      : "linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%)",
+    badgePrimaryText: darkMode ? "#bae6fd" : "#0f172a",
+    badgePrimaryBorder: darkMode
+      ? "1px solid rgba(56,189,248,0.28)"
+      : "1px solid #bfdbfe",
+
+    primaryBg: darkMode
+      ? "linear-gradient(180deg, #38bdf8 0%, #0284c7 100%)"
+      : "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
+    primaryText: darkMode ? "#082f49" : "#ffffff",
+
+    secondaryBg: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
+    secondaryText: darkMode ? "#e2e8f0" : "#0f172a",
+    secondaryBorder: darkMode
+      ? "1px solid rgba(148,163,184,0.18)"
+      : "1px solid #cbd5e1",
+
+    chipBg: darkMode ? "#0f172a" : "rgba(255,255,255,0.92)",
+    chipBorder: darkMode
+      ? "1px solid rgba(148,163,184,0.18)"
+      : "1px solid #dbeafe",
+
+    navBg: darkMode ? "rgba(2,6,23,0.96)" : "rgba(255,255,255,0.92)",
+    navBorder: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : "1px solid #e2e8f0",
+    navActiveBg: darkMode ? "#0f172a" : "#eef2ff",
+    navText: darkMode ? "#cbd5e1" : "#475569",
+    navTextActive: darkMode ? "#38bdf8" : "#0f172a",
+
+    syncBg: darkMode ? "rgba(30,41,59,0.95)" : "#eef2ff",
+  };
+
+  const themedCard: React.CSSProperties = {
+    ...styles.card,
+    background: ui.surface,
+    border: ui.surfaceBorder,
+    color: ui.text,
+  };
+
+  const themedHeroCard: React.CSSProperties = {
+    ...styles.heroCard,
+    background: ui.heroSurface,
+    border: ui.surfaceBorder,
+    color: ui.text,
+  };
+
+  const themedInput: React.CSSProperties = {
+    ...styles.input,
+    background: ui.inputBg,
+    color: ui.text,
+    border: ui.inputBorder,
+  };
+
+  const themedPrimaryButton: React.CSSProperties = {
+    ...styles.primaryButton,
+    background: ui.primaryBg,
+    color: ui.primaryText,
+  };
+
+  const themedSecondaryButton: React.CSSProperties = {
+    ...styles.secondaryButton,
+    background: ui.secondaryBg,
+    color: ui.secondaryText,
+    border: ui.secondaryBorder,
+  };
+
+  const themedSecondaryPillButton: React.CSSProperties = {
+    ...styles.secondaryPillButton,
+    background: ui.secondaryBg,
+    color: ui.secondaryText,
+    border: ui.secondaryBorder,
+  };
+
+  const themedInfoRow: React.CSSProperties = {
+    ...styles.infoRow,
+    background: ui.panel,
+    border: ui.panelBorder,
+    color: ui.text,
+  };
+
+  const themedTipBox: React.CSSProperties = {
+    ...styles.tipBox,
+    background: ui.panel,
+    border: ui.panelBorder,
+    color: ui.softText,
+  };
+
+  const themedSyncBox: React.CSSProperties = {
+    ...styles.syncBox,
+    background: ui.syncBg,
+    border: ui.panelBorder,
+    color: ui.text,
+  };
+
+  const themedValueCard: React.CSSProperties = {
+    ...styles.valueCard,
+    background: ui.item,
+    border: ui.itemBorder,
+    color: ui.text,
+  };
+
+  const themedHistoryItemRow: React.CSSProperties = {
+    ...styles.historyItemRow,
+    background: ui.item,
+    border: ui.itemBorder,
+    color: ui.text,
+  };
+
+  const themedHistoryItemColumn: React.CSSProperties = {
+    ...styles.historyItemColumn,
+    background: ui.item,
+    border: ui.itemBorder,
+    color: ui.text,
+  };
+
+  const themedEmptyBox: React.CSSProperties = {
+    ...styles.emptyBox,
+    background: ui.panel,
+    border: ui.panelBorder,
+    color: ui.mutedText,
+  };
+
+  const themedTaskRow: React.CSSProperties = {
+    ...styles.taskRow,
+    background: ui.item,
+    border: ui.itemBorder,
+    color: ui.text,
+  };
+
+  const themedWeekCard: React.CSSProperties = {
+    ...styles.weekCard,
+    background: ui.panel,
+    border: ui.panelBorder,
+    color: ui.text,
+  };
+
+  const themedWeekMeasureBox: React.CSSProperties = {
+    ...styles.weekMeasureBox,
+    background: ui.item,
+    border: ui.itemBorder,
+    color: ui.softText,
+  };
+
+  const themedBadge: React.CSSProperties = {
+    ...styles.badge,
+    background: ui.badgeBg,
+    color: ui.badgeText,
+  };
+
+  const themedBadgePrimary: React.CSSProperties = {
+    ...styles.badgePrimary,
+    background: ui.badgePrimaryBg,
+    color: ui.badgePrimaryText,
+    border: ui.badgePrimaryBorder,
+  };
+
+  function renderSplash() {
+    const fish = Array.from({ length: 28 }).map((_, index) => {
+      const lane = index % 14;
+      const isReverse = index % 5 === 0 || index % 6 === 0;
+      const top = 6 + lane * 6.2;
+      const delay = index * 0.16;
+      const duration = 6.5 + (index % 6) * 0.9;
+      const scale = 0.55 + (index % 5) * 0.16;
+      const opacity = 0.28 + (index % 6) * 0.1;
+
+      return (
         <div
+          key={index}
           style={{
-            ...styles.splashFishInner,
-            transform: `scale(${scale}) ${isReverse ? "scaleX(-1)" : ""}`,
+            ...styles.splashFish,
+            top: `${top}%`,
+            animationDelay: `${delay}s`,
+            animationDuration: `${duration}s`,
+            opacity,
+            transform: isReverse ? "scaleX(-1)" : "none",
           }}
         >
-          <div style={styles.splashFishBody} />
-          <div style={styles.splashFishTail} />
-          <div style={styles.splashFishFinTop} />
-          <div style={styles.splashFishFinBottom} />
-          <div style={styles.splashFishEye} />
+          <div
+            style={{
+              ...styles.splashFishInner,
+              transform: `scale(${scale}) ${isReverse ? "scaleX(-1)" : ""}`,
+            }}
+          >
+            <div style={styles.splashFishBody} />
+            <div style={styles.splashFishTail} />
+            <div style={styles.splashFishFinTop} />
+            <div style={styles.splashFishFinBottom} />
+            <div style={styles.splashFishEye} />
+          </div>
+        </div>
+      );
+    });
+
+    return (
+      <div style={styles.splashOverlay}>
+        <div style={styles.splashGlowA} />
+        <div style={styles.splashGlowB} />
+        <div style={styles.splashGlowC} />
+
+        <div style={styles.splashWaterGradientTop} />
+        <div style={styles.splashWaterGradientBottom} />
+
+        <div style={styles.bubbleLayer}>
+          {Array.from({ length: 24 }).map((_, i) => (
+            <span
+              key={i}
+              style={{
+                ...styles.bubble,
+                left: `${4 + i * 4}%`,
+                width: `${6 + (i % 4) * 4}px`,
+                height: `${6 + (i % 4) * 4}px`,
+                animationDelay: `${i * 0.22}s`,
+                animationDuration: `${5 + (i % 5) * 0.9}s`,
+                opacity: 0.16 + (i % 5) * 0.06,
+              }}
+            />
+          ))}
+        </div>
+
+        <div style={styles.fishLane}>{fish}</div>
+
+        <div style={styles.splashCenter}>
+          <div style={styles.splashBadge}>AQUARIUM LOGBUCH</div>
+          <h1 style={styles.splashTitle}>Dein Becken. Dein Rhythmus.</h1>
+          <p style={styles.splashText}>
+            Pflege, Wasserwerte und Dünger in einer ruhigen, modernen Ansicht.
+          </p>
         </div>
       </div>
     );
-  });
-    
-  return (
-    <div style={styles.splashOverlay}>
-      <div style={styles.splashGlowA} />
-      <div style={styles.splashGlowB} />
-      <div style={styles.splashGlowC} />
-
-      <div style={styles.splashWaterGradientTop} />
-      <div style={styles.splashWaterGradientBottom} />
-
-      <div style={styles.bubbleLayer}>
-        {Array.from({ length: 24 }).map((_, i) => (
-          <span
-            key={i}
-            style={{
-              ...styles.bubble,
-              left: `${4 + i * 4}%`,
-              width: `${6 + (i % 4) * 4}px`,
-              height: `${6 + (i % 4) * 4}px`,
-              animationDelay: `${i * 0.22}s`,
-              animationDuration: `${5 + (i % 5) * 0.9}s`,
-              opacity: 0.16 + (i % 5) * 0.06,
-            }}
-          />
-        ))}
-      </div>
-
-      <div style={styles.fishLane}>{fish}</div>
-
-      <div style={styles.splashCenter}>
-        <div style={styles.splashBadge}>AQUARIUM LOGBUCH</div>
-        <h1 style={styles.splashTitle}>Dein Becken. Dein Rhythmus.</h1>
-        <p style={styles.splashText}>
-          Pflege, Wasserwerte und Dünger in einer ruhigen, modernen Ansicht.
-        </p>
-      </div>
-    </div>
-  );
-}
+  }
 
   function renderDashboard() {
     return (
       <div style={styles.screenGrid}>
-        <section
-  style={{
-    ...styles.heroCard,
-    background: darkMode
-      ? "linear-gradient(135deg, rgba(14,165,233,0.16) 0%, rgba(34,197,94,0.05) 100%), rgba(15,23,42,0.88)"
-      : styles.heroCard.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.heroCard.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedHeroCard}>
           <div style={styles.heroTop}>
             <div>
               <div style={styles.eyebrow}>Heute im Fokus</div>
-              <div style={styles.heroTitle}>{aquariumName}</div>
-              <div style={styles.heroSubtitle}>
+              <div style={{ ...styles.heroTitle, color: ui.text }}>
+                {aquariumName}
+              </div>
+              <div style={{ ...styles.heroSubtitle, color: ui.subText }}>
                 {WEEKDAYS[today.getDay()]} · {today.toLocaleDateString("de-DE")}
               </div>
             </div>
@@ -921,10 +1120,10 @@ export default function App() {
 
           <div style={styles.badgeRow}>
             {tasksToday.length === 0 ? (
-              <span style={styles.badge}>Keine Aufgaben</span>
+              <span style={themedBadge}>Keine Aufgaben</span>
             ) : (
               tasksToday.map((item) => (
-                <span key={item} style={styles.badgePrimary}>
+                <span key={item} style={themedBadgePrimary}>
                   {item}
                 </span>
               ))
@@ -933,26 +1132,26 @@ export default function App() {
 
           <div style={styles.heroActionGrid}>
             <button
-              style={styles.primaryButton}
+              style={themedPrimaryButton}
               onClick={() => quickLogToday("NPK")}
             >
               NPK erledigt
             </button>
             <button
-              style={styles.primaryButton}
+              style={themedPrimaryButton}
               onClick={() => quickLogToday("Ferropol")}
             >
               Ferropol erledigt
             </button>
             <button
-              style={styles.primaryButton}
+              style={themedPrimaryButton}
               onClick={() => quickLogToday("Tagesdünger")}
             >
               Tagesdünger erledigt
             </button>
             {today.getDay() === 1 && (
               <button
-                style={styles.primaryButton}
+                style={themedPrimaryButton}
                 onClick={quickLogWaterChange}
               >
                 Wasserwechsel erledigt
@@ -961,28 +1160,21 @@ export default function App() {
           </div>
         </section>
 
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Dashboard
           </div>
 
-          <div style={styles.tipBox}>
-            <div style={styles.valueLabel}>Heute zu tun</div>
+          <div style={themedTipBox}>
+            <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+              Heute zu tun
+            </div>
             <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
               {tasksToday.length === 0 ? (
-                <div style={styles.taskRow}>Heute ist alles ruhig 🌿</div>
+                <div style={themedTaskRow}>Heute ist alles ruhig 🌿</div>
               ) : (
                 tasksToday.map((task) => (
-                  <div key={task} style={styles.taskRow}>
+                  <div key={task} style={themedTaskRow}>
                     • {task}
                   </div>
                 ))
@@ -990,7 +1182,7 @@ export default function App() {
             </div>
           </div>
 
-          <div style={styles.infoRow}>
+          <div style={themedInfoRow}>
             <span>Letzter Wasserwechsel</span>
             <strong>
               {daysSinceWaterChange == null
@@ -999,34 +1191,27 @@ export default function App() {
             </strong>
           </div>
 
-          <div style={styles.tipBox}>
-            <div style={styles.valueLabel}>Nitrat-Trend</div>
+          <div style={themedTipBox}>
+            <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+              Nitrat-Trend
+            </div>
             <strong>{no3TrendText}</strong>
           </div>
         </section>
 
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.cardTitle}>
             <Droplets size={18} /> Letzte Werte
           </div>
 
-          <div style={styles.infoRow}>
+          <div style={themedInfoRow}>
             <span>Letzte Messung</span>
             <strong>
               {latestWater ? formatDate(latestWater.date) : "noch keine"}
             </strong>
           </div>
 
-          <div style={styles.infoRow}>
+          <div style={themedInfoRow}>
             <span>Letzter Wasserwechsel</span>
             <strong>
               {latestWaterChange
@@ -1036,58 +1221,57 @@ export default function App() {
           </div>
 
           <div style={styles.valueGrid}>
-            <div style={styles.valueCard}>
-              <div style={styles.valueLabel}>NO3</div>
+            <div style={themedValueCard}>
+              <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                NO3
+              </div>
               <div style={styles.valueNum}>{latestWater?.no3 || "-"}</div>
             </div>
-            <div style={styles.valueCard}>
-              <div style={styles.valueLabel}>NO2</div>
+            <div style={themedValueCard}>
+              <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                NO2
+              </div>
               <div style={styles.valueNum}>{latestWater?.no2 || "-"}</div>
             </div>
-            <div style={styles.valueCard}>
-              <div style={styles.valueLabel}>pH</div>
+            <div style={themedValueCard}>
+              <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                pH
+              </div>
               <div style={styles.valueNum}>{latestWater?.ph || "-"}</div>
             </div>
-            <div style={styles.valueCard}>
-              <div style={styles.valueLabel}>O₂</div>
+            <div style={themedValueCard}>
+              <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                O₂
+              </div>
               <div style={styles.valueNum}>{latestWater?.o2 || "-"}</div>
             </div>
           </div>
         </section>
 
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.cardTitle}>
             <LineChartIcon size={18} /> Überblick
           </div>
 
-          <div style={styles.infoRow}>
+          <div style={themedInfoRow}>
             <span>Dünger-Einträge</span>
             <strong>{fertilizerLogs.length}</strong>
           </div>
-          <div style={styles.infoRow}>
+          <div style={themedInfoRow}>
             <span>Wasser-Messungen</span>
             <strong>{waterLogs.length}</strong>
           </div>
-          <div style={styles.infoRow}>
+          <div style={themedInfoRow}>
             <span>Wasserwechsel</span>
             <strong>{waterChangeLogs.length}</strong>
           </div>
 
-          <div style={styles.tipBox}>
+          <div style={themedTipBox}>
             Tipp: Als Startbildschirm-App speichern und Benachrichtigungen
             aktivieren.
           </div>
 
-          <div style={styles.syncBox}>
+          <div style={themedSyncBox}>
             <strong>Sync:</strong> {syncStatus}
           </div>
         </section>
@@ -1098,71 +1282,41 @@ export default function App() {
   function renderFertilizer() {
     return (
       <div style={styles.screenGrid}>
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.cardTitle}>
             <FlaskConical size={18} /> Standard-Dosierung
           </div>
 
-          <div style={styles.tipBox}>
+          <div style={themedTipBox}>
             Hier kannst du dir merken, wieviel du normalerweise in dieses
             Aquarium dosierst.
           </div>
 
           <div style={styles.formGrid}>
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               Ferropol
               <input
-                style={{
-  ...styles.input,
-  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
-  color: darkMode ? "#e2e8f0" : "#0f172a",
-  border: darkMode
-    ? "1px solid rgba(148,163,184,0.22)"
-    : "1px solid #cbd5e1",
-}}
+                style={themedInput}
                 placeholder="z. B. 10 ml"
                 value={activeDose.ferropol}
                 onChange={(e) => updateDose("ferropol", e.target.value)}
               />
             </label>
 
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               NPK
               <input
-                style={{
-  ...styles.input,
-  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
-  color: darkMode ? "#e2e8f0" : "#0f172a",
-  border: darkMode
-    ? "1px solid rgba(148,163,184,0.22)"
-    : "1px solid #cbd5e1",
-}}
+                style={themedInput}
                 placeholder="z. B. 8 ml"
                 value={activeDose.npk}
                 onChange={(e) => updateDose("npk", e.target.value)}
               />
             </label>
 
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               Tagesdünger
               <input
-                style={{
-  ...styles.input,
-  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
-  color: darkMode ? "#e2e8f0" : "#0f172a",
-  border: darkMode
-    ? "1px solid rgba(148,163,184,0.22)"
-    : "1px solid #cbd5e1",
-}}
+                style={themedInput}
                 placeholder="z. B. 5 ml"
                 value={activeDose.tages}
                 onChange={(e) => updateDose("tages", e.target.value)}
@@ -1171,16 +1325,7 @@ export default function App() {
           </div>
         </section>
 
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.sectionHead}>
             <div style={styles.cardTitle}>
               <FlaskConical size={18} /> Dünger eintragen
@@ -1188,17 +1333,10 @@ export default function App() {
           </div>
 
           <div style={styles.formGrid}>
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               Datum
               <input
-                style={{
-  ...styles.input,
-  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
-  color: darkMode ? "#e2e8f0" : "#0f172a",
-  border: darkMode
-    ? "1px solid rgba(148,163,184,0.22)"
-    : "1px solid #cbd5e1",
-}}
+                style={themedInput}
                 type="date"
                 value={fertilizerForm.date}
                 onChange={(e) =>
@@ -1210,17 +1348,10 @@ export default function App() {
               />
             </label>
 
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               Dünger
               <select
-                style={{
-  ...styles.input,
-  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
-  color: darkMode ? "#e2e8f0" : "#0f172a",
-  border: darkMode
-    ? "1px solid rgba(148,163,184,0.22)"
-    : "1px solid #cbd5e1",
-}}
+                style={themedInput}
                 value={fertilizerForm.fertilizer}
                 onChange={(e) =>
                   setFertilizerForm({
@@ -1235,17 +1366,10 @@ export default function App() {
               </select>
             </label>
 
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               Menge
               <input
-                style={{
-  ...styles.input,
-  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
-  color: darkMode ? "#e2e8f0" : "#0f172a",
-  border: darkMode
-    ? "1px solid rgba(148,163,184,0.22)"
-    : "1px solid #cbd5e1",
-}}
+                style={themedInput}
                 placeholder="z. B. 5 ml"
                 value={fertilizerForm.amount}
                 onChange={(e) =>
@@ -1257,27 +1381,27 @@ export default function App() {
               />
             </label>
 
-            <button style={styles.primaryButton} onClick={addFertilizerLog}>
+            <button style={themedPrimaryButton} onClick={addFertilizerLog}>
               Speichern
             </button>
           </div>
 
           <div style={styles.historyList}>
             {fertilizerLogs.length === 0 ? (
-              <div style={styles.emptyBox}>
+              <div style={themedEmptyBox}>
                 Noch keine Dünger-Einträge für dieses Aquarium.
               </div>
             ) : (
               fertilizerLogs.map((entry) => (
-                <div key={entry.id} style={styles.historyItemRow}>
+                <div key={entry.id} style={themedHistoryItemRow}>
                   <div>
                     <div style={{ fontWeight: 700 }}>{entry.fertilizer}</div>
-                    <div style={styles.smallMuted}>
+                    <div style={{ ...styles.smallMuted, color: ui.mutedText }}>
                       {formatDate(entry.date)} · {entry.amount}
                     </div>
                   </div>
                   <button
-                    style={styles.iconButton}
+                    style={{ ...styles.iconButton, color: ui.text }}
                     onClick={() => removeLog("fertilizer", entry.id)}
                   >
                     <Trash2 size={16} />
@@ -1294,16 +1418,7 @@ export default function App() {
   function renderWater() {
     return (
       <div style={styles.screenGrid}>
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.sectionHead}>
             <div style={styles.cardTitle}>
               <Droplets size={18} /> Wasserwerte eintragen
@@ -1311,10 +1426,10 @@ export default function App() {
           </div>
 
           <div style={styles.formGrid}>
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               Datum
               <input
-                style={styles.input}
+                style={themedInput}
                 type="date"
                 value={waterForm.date}
                 onChange={(e) =>
@@ -1323,10 +1438,10 @@ export default function App() {
               />
             </label>
 
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               NO3
               <input
-                style={styles.input}
+                style={themedInput}
                 value={waterForm.no3}
                 onChange={(e) =>
                   setWaterForm({ ...waterForm, no3: e.target.value })
@@ -1334,10 +1449,10 @@ export default function App() {
               />
             </label>
 
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               NO2
               <input
-                style={styles.input}
+                style={themedInput}
                 value={waterForm.no2}
                 onChange={(e) =>
                   setWaterForm({ ...waterForm, no2: e.target.value })
@@ -1345,10 +1460,10 @@ export default function App() {
               />
             </label>
 
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               pH
               <input
-                style={styles.input}
+                style={themedInput}
                 value={waterForm.ph}
                 onChange={(e) =>
                   setWaterForm({ ...waterForm, ph: e.target.value })
@@ -1356,10 +1471,10 @@ export default function App() {
               />
             </label>
 
-            <label style={styles.label}>
+            <label style={{ ...styles.label, color: ui.softText }}>
               O₂
               <input
-                style={styles.input}
+                style={themedInput}
                 value={waterForm.o2}
                 onChange={(e) =>
                   setWaterForm({ ...waterForm, o2: e.target.value })
@@ -1367,25 +1482,25 @@ export default function App() {
               />
             </label>
 
-            <button style={styles.primaryButton} onClick={addWaterLog}>
+            <button style={themedPrimaryButton} onClick={addWaterLog}>
               Speichern
             </button>
           </div>
 
           <div style={styles.historyList}>
             {waterLogs.length === 0 ? (
-              <div style={styles.emptyBox}>
+              <div style={themedEmptyBox}>
                 Noch keine Wasserwerte für dieses Aquarium.
               </div>
             ) : (
               waterLogs.map((entry) => (
-                <div key={entry.id} style={styles.historyItemColumn}>
+                <div key={entry.id} style={themedHistoryItemColumn}>
                   <div style={styles.historyHeader}>
                     <div style={{ fontWeight: 700 }}>
                       Messung vom {formatDate(entry.date)}
                     </div>
                     <button
-                      style={styles.iconButton}
+                      style={{ ...styles.iconButton, color: ui.text }}
                       onClick={() => removeLog("water", entry.id)}
                     >
                       <Trash2 size={16} />
@@ -1393,20 +1508,28 @@ export default function App() {
                   </div>
 
                   <div style={styles.valueGrid}>
-                    <div style={styles.valueCard}>
-                      <div style={styles.valueLabel}>NO3</div>
+                    <div style={themedValueCard}>
+                      <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                        NO3
+                      </div>
                       <div style={styles.valueNumSmall}>{entry.no3 || "-"}</div>
                     </div>
-                    <div style={styles.valueCard}>
-                      <div style={styles.valueLabel}>NO2</div>
+                    <div style={themedValueCard}>
+                      <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                        NO2
+                      </div>
                       <div style={styles.valueNumSmall}>{entry.no2 || "-"}</div>
                     </div>
-                    <div style={styles.valueCard}>
-                      <div style={styles.valueLabel}>pH</div>
+                    <div style={themedValueCard}>
+                      <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                        pH
+                      </div>
                       <div style={styles.valueNumSmall}>{entry.ph || "-"}</div>
                     </div>
-                    <div style={styles.valueCard}>
-                      <div style={styles.valueLabel}>O₂</div>
+                    <div style={themedValueCard}>
+                      <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                        O₂
+                      </div>
                       <div style={styles.valueNumSmall}>{entry.o2 || "-"}</div>
                     </div>
                   </div>
@@ -1422,31 +1545,26 @@ export default function App() {
   function renderHistory() {
     return (
       <div style={styles.screenGrid}>
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Wochenübersicht
           </div>
 
           <div style={styles.gridWeek}>
             {weekOverview.map((day) => (
-              <div key={day.iso} style={styles.weekCard}>
+              <div key={day.iso} style={themedWeekCard}>
                 <div style={styles.weekCardHead}>
                   <div style={{ fontWeight: 700 }}>{day.shortWeekday}</div>
-                  <div style={styles.smallMuted}>{day.displayDate}</div>
+                  <div style={{ ...styles.smallMuted, color: ui.mutedText }}>
+                    {day.displayDate}
+                  </div>
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
                   {day.plan.length === 0 ? (
-                    <div style={styles.smallMuted}>Keine Aufgaben</div>
+                    <div style={{ ...styles.smallMuted, color: ui.mutedText }}>
+                      Keine Aufgaben
+                    </div>
                   ) : (
                     day.plan.map((task) => {
                       const done = day.doneTasks.includes(task);
@@ -1466,13 +1584,15 @@ export default function App() {
 
                 <div style={{ marginTop: 8 }}>
                   {day.dayWater ? (
-                    <div style={styles.weekMeasureBox}>
+                    <div style={themedWeekMeasureBox}>
                       Messung: NO3 {day.dayWater.no3 || "-"} · NO2{" "}
                       {day.dayWater.no2 || "-"} · pH {day.dayWater.ph || "-"} ·
                       O₂ {day.dayWater.o2 || "-"}
                     </div>
                   ) : (
-                    <div style={styles.smallMuted}>Keine Messung</div>
+                    <div style={{ ...styles.smallMuted, color: ui.mutedText }}>
+                      Keine Messung
+                    </div>
                   )}
                 </div>
               </div>
@@ -1480,39 +1600,32 @@ export default function App() {
           </div>
         </section>
 
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Verlauf & Historie
           </div>
 
           <div style={styles.grid3}>
             <div>
-              <div style={styles.subhead}>Alle Dünger-Einträge</div>
+              <div style={{ ...styles.subhead, color: ui.softText }}>
+                Alle Dünger-Einträge
+              </div>
               <div style={styles.historyListTall}>
                 {fertilizerLogs.length === 0 ? (
-                  <div style={styles.emptyBox}>Noch keine Dünger-Historie.</div>
+                  <div style={themedEmptyBox}>Noch keine Dünger-Historie.</div>
                 ) : (
                   fertilizerLogs.map((entry) => (
-                    <div key={entry.id} style={styles.historyItemRow}>
+                    <div key={entry.id} style={themedHistoryItemRow}>
                       <div>
                         <div style={{ fontWeight: 700 }}>
                           {entry.fertilizer}
                         </div>
-                        <div style={styles.smallMuted}>
+                        <div style={{ ...styles.smallMuted, color: ui.mutedText }}>
                           {formatDate(entry.date)} · {entry.amount}
                         </div>
                       </div>
                       <button
-                        style={styles.iconButton}
+                        style={{ ...styles.iconButton, color: ui.text }}
                         onClick={() => removeLog("fertilizer", entry.id)}
                       >
                         <Trash2 size={16} />
@@ -1524,25 +1637,27 @@ export default function App() {
             </div>
 
             <div>
-              <div style={styles.subhead}>Alle Wasser-Messungen</div>
+              <div style={{ ...styles.subhead, color: ui.softText }}>
+                Alle Wasser-Messungen
+              </div>
               <div style={styles.historyListTall}>
                 {waterLogs.length === 0 ? (
-                  <div style={styles.emptyBox}>Noch keine Wasser-Historie.</div>
+                  <div style={themedEmptyBox}>Noch keine Wasser-Historie.</div>
                 ) : (
                   waterLogs.map((entry) => (
-                    <div key={entry.id} style={styles.historyItemColumn}>
+                    <div key={entry.id} style={themedHistoryItemColumn}>
                       <div style={styles.historyHeader}>
                         <div style={{ fontWeight: 700 }}>
                           Messung vom {formatDate(entry.date)}
                         </div>
                         <button
-                          style={styles.iconButton}
+                          style={{ ...styles.iconButton, color: ui.text }}
                           onClick={() => removeLog("water", entry.id)}
                         >
                           <Trash2 size={16} />
                         </button>
                       </div>
-                      <div style={styles.smallMuted}>
+                      <div style={{ ...styles.smallMuted, color: ui.mutedText }}>
                         NO3 {entry.no3 || "-"} · NO2 {entry.no2 || "-"} · pH{" "}
                         {entry.ph || "-"} · O₂ {entry.o2 || "-"}
                       </div>
@@ -1553,15 +1668,17 @@ export default function App() {
             </div>
 
             <div>
-              <div style={styles.subhead}>Alle Wasserwechsel</div>
+              <div style={{ ...styles.subhead, color: ui.softText }}>
+                Alle Wasserwechsel
+              </div>
               <div style={styles.historyListTall}>
                 {waterChangeLogs.length === 0 ? (
-                  <div style={styles.emptyBox}>
+                  <div style={themedEmptyBox}>
                     Noch keine Wasserwechsel-Historie.
                   </div>
                 ) : (
                   waterChangeLogs.map((entry) => (
-                    <div key={entry.id} style={styles.historyItemRow}>
+                    <div key={entry.id} style={themedHistoryItemRow}>
                       <div>
                         <div
                           style={{
@@ -1573,12 +1690,12 @@ export default function App() {
                         >
                           <Waves size={16} /> Wasserwechsel
                         </div>
-                        <div style={styles.smallMuted}>
+                        <div style={{ ...styles.smallMuted, color: ui.mutedText }}>
                           {formatDate(entry.date)} · {entry.amount}
                         </div>
                       </div>
                       <button
-                        style={styles.iconButton}
+                        style={{ ...styles.iconButton, color: ui.text }}
                         onClick={() => removeLog("waterChange", entry.id)}
                       >
                         <Trash2 size={16} />
@@ -1595,18 +1712,22 @@ export default function App() {
   }
 
   function renderChart() {
+    const primarySmall: React.CSSProperties = {
+      ...styles.primarySmallButton,
+      background: ui.primaryBg,
+      color: ui.primaryText,
+    };
+
+    const secondarySmall: React.CSSProperties = {
+      ...styles.secondarySmallButton,
+      background: ui.secondaryBg,
+      color: ui.secondaryText,
+      border: ui.secondaryBorder,
+    };
+
     return (
       <div style={styles.screenGrid}>
-        <section
-  style={{
-    ...styles.card,
-    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : styles.card.border,
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-  }}
->
+        <section style={themedCard}>
           <div style={styles.sectionHead}>
             <div style={styles.cardTitle}>
               <LineChartIcon size={18} /> Wasserwerte-Verlauf
@@ -1614,41 +1735,25 @@ export default function App() {
 
             <div style={styles.buttonRowWrap}>
               <button
-                style={
-                  timeFilter === "all"
-                    ? styles.primarySmallButton
-                    : styles.secondarySmallButton
-                }
+                style={timeFilter === "all" ? primarySmall : secondarySmall}
                 onClick={() => setTimeFilter("all")}
               >
                 Alles
               </button>
               <button
-                style={
-                  timeFilter === "30"
-                    ? styles.primarySmallButton
-                    : styles.secondarySmallButton
-                }
+                style={timeFilter === "30" ? primarySmall : secondarySmall}
                 onClick={() => setTimeFilter("30")}
               >
                 30 Tage
               </button>
               <button
-                style={
-                  timeFilter === "90"
-                    ? styles.primarySmallButton
-                    : styles.secondarySmallButton
-                }
+                style={timeFilter === "90" ? primarySmall : secondarySmall}
                 onClick={() => setTimeFilter("90")}
               >
                 3 Monate
               </button>
               <button
-                style={
-                  timeFilter === "365"
-                    ? styles.primarySmallButton
-                    : styles.secondarySmallButton
-                }
+                style={timeFilter === "365" ? primarySmall : secondarySmall}
                 onClick={() => setTimeFilter("365")}
               >
                 1 Jahr
@@ -1657,7 +1762,7 @@ export default function App() {
           </div>
 
           {chartData.length < 2 ? (
-            <div style={styles.emptyBox}>
+            <div style={themedEmptyBox}>
               Für ein Diagramm brauchst du mindestens 2 Messungen im
               ausgewählten Aquarium.
             </div>
@@ -1666,9 +1771,15 @@ export default function App() {
               <div style={{ width: "100%", height: 340, marginTop: 8 }}>
                 <ResponsiveContainer>
                   <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
-                    <XAxis dataKey="date" stroke="#64748b" />
-                    <YAxis stroke="#64748b" />
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke={darkMode ? "#334155" : "#dbeafe"}
+                    />
+                    <XAxis
+                      dataKey="date"
+                      stroke={darkMode ? "#94a3b8" : "#64748b"}
+                    />
+                    <YAxis stroke={darkMode ? "#94a3b8" : "#64748b"} />
                     <Tooltip />
                     <Legend />
                     <Line
@@ -1708,21 +1819,27 @@ export default function App() {
               </div>
 
               <div style={styles.grid3}>
-                <div style={styles.tipBox}>
-                  <div style={styles.valueLabel}>Pflegeplan</div>
+                <div style={themedTipBox}>
+                  <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                    Pflegeplan
+                  </div>
                   <strong>Montag Wasserwechsel</strong>
                 </div>
-                <div style={styles.tipBox}>
-                  <div style={styles.valueLabel}>Düngung</div>
+                <div style={themedTipBox}>
+                  <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                    Düngung
+                  </div>
                   <strong>NPK · Mo/Mi/Fr</strong>
                 </div>
-                <div style={styles.tipBox}>
-                  <div style={styles.valueLabel}>Düngung</div>
+                <div style={themedTipBox}>
+                  <div style={{ ...styles.valueLabel, color: ui.mutedText }}>
+                    Düngung
+                  </div>
                   <strong>Ferropol · Di/Do</strong>
                 </div>
               </div>
 
-              <div style={styles.smallMuted}>
+              <div style={{ ...styles.smallMuted, color: ui.mutedText }}>
                 Das Diagramm zeigt die Entwicklung deiner eingetragenen Werte
                 für {aquariumName}.
               </div>
@@ -1732,157 +1849,131 @@ export default function App() {
       </div>
     );
   }
-  
+
   return (
     <>
       <style>{`
-  @keyframes swimAcross {
-    0% {
-      transform: translateX(-18vw) translateY(0px);
-    }
-    20% {
-      transform: translateX(10vw) translateY(-6px);
-    }
-    40% {
-      transform: translateX(35vw) translateY(5px);
-    }
-    60% {
-      transform: translateX(62vw) translateY(-8px);
-    }
-    80% {
-      transform: translateX(90vw) translateY(4px);
-    }
-    100% {
-      transform: translateX(118vw) translateY(-3px);
-    }
-  }
+        @keyframes swimAcross {
+          0% { transform: translateX(-18vw) translateY(0px); }
+          20% { transform: translateX(10vw) translateY(-6px); }
+          40% { transform: translateX(35vw) translateY(5px); }
+          60% { transform: translateX(62vw) translateY(-8px); }
+          80% { transform: translateX(90vw) translateY(4px); }
+          100% { transform: translateX(118vw) translateY(-3px); }
+        }
 
-  @keyframes bubbleUp {
-    0% {
-      transform: translateY(30px) translateX(0px) scale(0.8);
-      opacity: 0;
-    }
-    20% {
-      opacity: 0.22;
-    }
-    40% {
-      transform: translateY(-20vh) translateX(6px) scale(0.95);
-    }
-    70% {
-      transform: translateY(-50vh) translateX(-4px) scale(1.05);
-    }
-    100% {
-      transform: translateY(-85vh) translateX(10px) scale(1.15);
-      opacity: 0;
-    }
-  }
+        @keyframes bubbleUp {
+          0% {
+            transform: translateY(30px) translateX(0px) scale(0.8);
+            opacity: 0;
+          }
+          20% { opacity: 0.22; }
+          40% { transform: translateY(-20vh) translateX(6px) scale(0.95); }
+          70% { transform: translateY(-50vh) translateX(-4px) scale(1.05); }
+          100% {
+            transform: translateY(-85vh) translateX(10px) scale(1.15);
+            opacity: 0;
+          }
+        }
 
-  @keyframes fadeSplash {
-    0% {
-      opacity: 0;
-      transform: scale(1.015);
-    }
-    100% {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
+        @keyframes fadeSplash {
+          0% { opacity: 0; transform: scale(1.015); }
+          100% { opacity: 1; transform: scale(1); }
+        }
 
-  @keyframes pulseGlow {
-    0% {
-      transform: scale(1);
-      opacity: 0.34;
-    }
-    50% {
-      transform: scale(1.08);
-      opacity: 0.58;
-    }
-    100% {
-      transform: scale(1);
-      opacity: 0.34;
-    }
-  }
+        @keyframes pulseGlow {
+          0% { transform: scale(1); opacity: 0.34; }
+          50% { transform: scale(1.08); opacity: 0.58; }
+          100% { transform: scale(1); opacity: 0.34; }
+        }
 
-  @keyframes fishWiggle {
-    0% {
-      transform: rotate(0deg);
-    }
-    25% {
-      transform: rotate(2deg);
-    }
-    50% {
-      transform: rotate(0deg);
-    }
-    75% {
-      transform: rotate(-2deg);
-    }
-    100% {
-      transform: rotate(0deg);
-    }
-  }
+        @keyframes fishWiggle {
+          0% { transform: rotate(0deg); }
+          25% { transform: rotate(2deg); }
+          50% { transform: rotate(0deg); }
+          75% { transform: rotate(-2deg); }
+          100% { transform: rotate(0deg); }
+        }
 
-  @keyframes centerFloat {
-    0% {
-      transform: translate(-50%, -50%);
-    }
-    50% {
-      transform: translate(-50%, calc(-50% - 4px));
-    }
-    100% {
-      transform: translate(-50%, -50%);
-    }
-  }
-`}</style>
+        @keyframes centerFloat {
+          0% { transform: translate(-50%, -50%); }
+          50% { transform: translate(-50%, calc(-50% - 4px)); }
+          100% { transform: translate(-50%, -50%); }
+        }
+      `}</style>
 
       {showSplash && renderSplash()}
 
       <div
-  style={{
-    ...styles.page,
-    background: darkMode ? "#020617" : "#f8fafc",
-    color: "#0f172a",
-  }}
->
+        style={{
+          ...styles.page,
+          background: ui.pageBg,
+          color: ui.text,
+        }}
+      >
         <div style={styles.containerWithBottomNav}>
           <div
-  style={{
-    ...styles.topBar,
-    background: darkMode ? "rgba(15,23,42,0.9)" : styles.topBar.background,
-    border: darkMode
-      ? "1px solid rgba(148,163,184,0.18)"
-      : styles.topBar.border,
-  }}
->
+            style={{
+              ...styles.topBar,
+              background: ui.topBarBg,
+              border: ui.topBarBorder,
+            }}
+          >
             <div style={{ maxWidth: 720 }}>
-              <h1 style={{ ...styles.h1, color: darkMode ? "#e2e8f0" : "#0f172a" }}>
-  Aquarium Logbuch
-</h1>
-              <p style={{ ...styles.sub, color: darkMode ? "#94a3b8" : "#475569" }}>
+              <h1 style={{ ...styles.h1, color: ui.text }}>Aquarium Logbuch</h1>
+              <p style={{ ...styles.sub, color: ui.subText }}>
                 Ruhiges, modernes Pflege-Log für Dünger, Wasserwerte,
                 Wasserwechsel und Verlauf.
               </p>
+
               <button
-  style={{
-    padding: "8px 12px",
-    borderRadius: 10,
-    border: "1px solid #ccc",
-    cursor: "pointer",
-    marginTop: 10,
-  }}
-  onClick={() => setDarkMode(!darkMode)}
->
-  {darkMode ? "🌞 Light Mode" : "🌙 Dark Mode"}
-</button>
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: ui.secondaryBorder,
+                  cursor: "pointer",
+                  marginTop: 10,
+                  background: ui.secondaryBg,
+                  color: ui.secondaryText,
+                  fontWeight: 700,
+                }}
+                onClick={() => setDarkMode((prev) => !prev)}
+              >
+                {darkMode ? "🌞 Light Mode" : "🌙 Dark Mode"}
+              </button>
 
               <div style={styles.heroMetaRow}>
-                <div style={styles.heroMetaChip}>
+                <div
+                  style={{
+                    ...styles.heroMetaChip,
+                    background: ui.chipBg,
+                    border: ui.chipBorder,
+                    color: ui.text,
+                  }}
+                >
                   <Sparkles size={16} /> Ruhiger Pflege-Flow
                 </div>
-                <div style={styles.heroMetaChip}>
+
+                <div
+                  style={{
+                    ...styles.heroMetaChip,
+                    background: ui.chipBg,
+                    border: ui.chipBorder,
+                    color: ui.text,
+                  }}
+                >
                   <RefreshCw size={16} /> {syncStatus}
                 </div>
 
-                <button style={styles.heroMetaButton} onClick={enableNotifications}>
+                <button
+                  style={{
+                    ...styles.heroMetaButton,
+                    background: ui.chipBg,
+                    border: ui.chipBorder,
+                    color: ui.text,
+                  }}
+                  onClick={enableNotifications}
+                >
                   <Bell size={16} />
                   {notificationPermission === "granted"
                     ? "Benachrichtigungen aktiv"
@@ -1895,7 +1986,7 @@ export default function App() {
 
                 {notificationPermission === "granted" && (
                   <button
-                    style={styles.secondaryPillButton}
+                    style={themedSecondaryPillButton}
                     onClick={sendTestNotification}
                   >
                     Test senden
@@ -1906,68 +1997,69 @@ export default function App() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={styles.tabRow}>
-                {aquariums.map((aq) => (
-                  <button
-                    key={aq.id}
-                    onClick={() => setSelectedAquarium(aq.id)}
-                    style={{
-  ...styles.tab,
-  background:
-    selectedAquarium === aq.id
-      ? darkMode
-        ? "#38bdf8"
-        : styles.tabActive.background
-      : darkMode
-      ? "#0f172a"
-      : "white",
-  color:
-    selectedAquarium === aq.id
-      ? darkMode
-        ? "#082f49"
-        : "white"
-      : darkMode
-      ? "#e2e8f0"
-      : "#0f172a",
-  border:
-    selectedAquarium === aq.id
-      ? darkMode
-        ? "1px solid #38bdf8"
-        : styles.tabActive.borderColor
-      : darkMode
-      ? "1px solid rgba(148,163,184,0.18)"
-      : "1px solid #cbd5e1",
-}}
-                  >
-                    {aq.name}
-                  </button>
-                ))}
+                {aquariums.map((aq) => {
+                  const active = selectedAquarium === aq.id;
+
+                  return (
+                    <button
+                      key={aq.id}
+                      onClick={() => setSelectedAquarium(aq.id)}
+                      style={{
+                        ...styles.tab,
+                        background: active
+                          ? darkMode
+                            ? "#38bdf8"
+                            : "#0f172a"
+                          : darkMode
+                          ? "#0f172a"
+                          : "white",
+                        color: active
+                          ? darkMode
+                            ? "#082f49"
+                            : "white"
+                          : darkMode
+                          ? "#e2e8f0"
+                          : "#0f172a",
+                        border: active
+                          ? darkMode
+                            ? "1px solid #38bdf8"
+                            : "1px solid #0f172a"
+                          : darkMode
+                          ? "1px solid rgba(148,163,184,0.18)"
+                          : "1px solid #cbd5e1",
+                      }}
+                    >
+                      {aq.name}
+                    </button>
+                  );
+                })}
 
                 <button
-  style={{
-    ...styles.addAquariumButton,
-    background: darkMode ? "#0f172a" : "white",
-    color: darkMode ? "#e2e8f0" : "#0f172a",
-    border: darkMode
-      ? "1px dashed rgba(148,163,184,0.35)"
-      : "1px dashed #94a3b8",
-  }}
-  onClick={addAquarium}
->
+                  style={{
+                    ...styles.addAquariumButton,
+                    background: darkMode ? "#0f172a" : "white",
+                    color: darkMode ? "#e2e8f0" : "#0f172a",
+                    border: darkMode
+                      ? "1px dashed rgba(148,163,184,0.35)"
+                      : "1px dashed #94a3b8",
+                  }}
+                  onClick={addAquarium}
+                >
                   <Plus size={16} />
                 </button>
               </div>
 
               <div style={styles.buttonRowWrap}>
-                <button style={styles.secondaryButton} onClick={refreshCloudState}>
+                <button style={themedSecondaryButton} onClick={refreshCloudState}>
                   <RefreshCw size={16} /> Aktualisieren
                 </button>
 
-                <button style={styles.secondaryButton} onClick={exportBackup}>
+                <button style={themedSecondaryButton} onClick={exportBackup}>
                   <Download size={16} /> Backup exportieren
                 </button>
 
                 <button
-                  style={styles.secondaryButton}
+                  style={themedSecondaryButton}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload size={16} /> Backup importieren
@@ -1992,31 +2084,20 @@ export default function App() {
         </div>
 
         <div
-  style={{
-    ...styles.bottomNav,
-    background: darkMode ? "rgba(2,6,23,0.96)" : styles.bottomNav.background,
-    borderTop: darkMode
-      ? "1px solid rgba(148,163,184,0.14)"
-      : "1px solid #e2e8f0",
-  }}
->
+          style={{
+            ...styles.bottomNav,
+            background: ui.navBg,
+            borderTop: ui.navBorder,
+          }}
+        >
           <button
             style={{
-  ...styles.bottomNavButton,
-  color: darkMode ? "#cbd5e1" : "#475569",
-  background:
-    activeTab === "dashboard"
-      ? darkMode
-        ? "#0f172a"
-        : "#eef2ff"
-      : "transparent",
-  ...(activeTab === "dashboard"
-    ? {
-        color: darkMode ? "#38bdf8" : "#0f172a",
-        fontWeight: 800,
-      }
-    : {}),
-}}
+              ...styles.bottomNavButton,
+              color: activeTab === "dashboard" ? ui.navTextActive : ui.navText,
+              background:
+                activeTab === "dashboard" ? ui.navActiveBg : "transparent",
+              fontWeight: activeTab === "dashboard" ? 800 : 700,
+            }}
             onClick={() => setActiveTab("dashboard")}
           >
             <CalendarDays size={18} />
@@ -2026,7 +2107,10 @@ export default function App() {
           <button
             style={{
               ...styles.bottomNavButton,
-              ...(activeTab === "fertilizer" ? styles.bottomNavButtonActive : {}),
+              color: activeTab === "fertilizer" ? ui.navTextActive : ui.navText,
+              background:
+                activeTab === "fertilizer" ? ui.navActiveBg : "transparent",
+              fontWeight: activeTab === "fertilizer" ? 800 : 700,
             }}
             onClick={() => setActiveTab("fertilizer")}
           >
@@ -2037,7 +2121,9 @@ export default function App() {
           <button
             style={{
               ...styles.bottomNavButton,
-              ...(activeTab === "water" ? styles.bottomNavButtonActive : {}),
+              color: activeTab === "water" ? ui.navTextActive : ui.navText,
+              background: activeTab === "water" ? ui.navActiveBg : "transparent",
+              fontWeight: activeTab === "water" ? 800 : 700,
             }}
             onClick={() => setActiveTab("water")}
           >
@@ -2048,7 +2134,10 @@ export default function App() {
           <button
             style={{
               ...styles.bottomNavButton,
-              ...(activeTab === "history" ? styles.bottomNavButtonActive : {}),
+              color: activeTab === "history" ? ui.navTextActive : ui.navText,
+              background:
+                activeTab === "history" ? ui.navActiveBg : "transparent",
+              fontWeight: activeTab === "history" ? 800 : 700,
             }}
             onClick={() => setActiveTab("history")}
           >
@@ -2059,7 +2148,9 @@ export default function App() {
           <button
             style={{
               ...styles.bottomNavButton,
-              ...(activeTab === "chart" ? styles.bottomNavButtonActive : {}),
+              color: activeTab === "chart" ? ui.navTextActive : ui.navText,
+              background: activeTab === "chart" ? ui.navActiveBg : "transparent",
+              fontWeight: activeTab === "chart" ? 800 : 700,
             }}
             onClick={() => setActiveTab("chart")}
           >
@@ -2075,8 +2166,6 @@ export default function App() {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background:
-      "radial-gradient(circle at top, rgba(56,189,248,0.18), transparent 30%), linear-gradient(180deg, #f4fbff 0%, #eef6fb 45%, #f8fafc 100%)",
     padding: 16,
     fontFamily: "Inter, system-ui, sans-serif",
     color: "#0f172a",
@@ -2101,8 +2190,6 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 16,
     flexWrap: "wrap",
     alignItems: "flex-start",
-    background: "rgba(255,255,255,0.62)",
-    border: "1px solid rgba(255,255,255,0.75)",
     borderRadius: 28,
     padding: 18,
     backdropFilter: "blur(14px)",
@@ -2118,7 +2205,6 @@ const styles: Record<string, React.CSSProperties> = {
 
   sub: {
     margin: "8px 0 0",
-    color: "#475569",
     maxWidth: 560,
     lineHeight: 1.5,
   },
@@ -2136,19 +2222,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     padding: "10px 12px",
     borderRadius: 999,
-    background: "rgba(255,255,255,0.92)",
-    border: "1px solid #dbeafe",
-    color: "#0f172a",
     fontSize: 13,
     fontWeight: 700,
   },
 
   heroMetaButton: {
-    border: "1px solid #bfdbfe",
     borderRadius: 999,
     padding: "10px 14px",
-    background: "linear-gradient(180deg, #ffffff 0%, #eff6ff 100%)",
-    color: "#0f172a",
     fontWeight: 800,
     cursor: "pointer",
     display: "flex",
@@ -2157,11 +2237,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   secondaryPillButton: {
-    border: "1px solid #cbd5e1",
     borderRadius: 999,
     padding: "10px 14px",
-    background: "white",
-    color: "#0f172a",
     fontWeight: 700,
     cursor: "pointer",
   },
@@ -2179,25 +2256,20 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   card: {
-    background: "rgba(255,255,255,0.78)",
     borderRadius: 24,
     padding: 16,
     boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
     display: "grid",
     gap: 12,
-    border: "1px solid rgba(255,255,255,0.7)",
     backdropFilter: "blur(12px)",
   },
 
   heroCard: {
-    background:
-      "linear-gradient(135deg, rgba(14,165,233,0.18) 0%, rgba(34,197,94,0.08) 100%), rgba(255,255,255,0.72)",
     borderRadius: 28,
     padding: 18,
     boxShadow: "0 12px 34px rgba(15, 23, 42, 0.08)",
     display: "grid",
     gap: 14,
-    border: "1px solid rgba(255,255,255,0.7)",
     backdropFilter: "blur(12px)",
   },
 
@@ -2225,7 +2297,6 @@ const styles: Record<string, React.CSSProperties> = {
 
   heroSubtitle: {
     marginTop: 4,
-    color: "#475569",
     fontSize: 14,
   },
 
@@ -2264,30 +2335,18 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
   },
 
-  muted: {
-    color: "#64748b",
-    fontSize: 14,
-  },
-
   smallMuted: {
-    color: "#64748b",
     fontSize: 13,
   },
 
   subhead: {
     fontWeight: 700,
     marginBottom: 8,
-    color: "#334155",
   },
 
-  badgeRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-  },
+  badgeRow: { display: "flex", flexWrap: "wrap", gap: 8 },
 
   badge: {
-    background: "#e2e8f0",
     padding: "7px 12px",
     borderRadius: 999,
     fontSize: 13,
@@ -2295,43 +2354,26 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   badgePrimary: {
-    background: "linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%)",
-    border: "1px solid #bfdbfe",
     padding: "8px 12px",
     borderRadius: 999,
     fontSize: 13,
     fontWeight: 800,
-    color: "#0f172a",
   },
 
-  columnGap: {
-    display: "grid",
-    gap: 8,
-  },
-
-  buttonRowWrap: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  },
+  buttonRowWrap: { display: "flex", gap: 8, flexWrap: "wrap" },
 
   primaryButton: {
     border: "none",
     borderRadius: 16,
     padding: "12px 14px",
-    background: "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
-    color: "white",
     fontWeight: 800,
     cursor: "pointer",
     boxShadow: "0 10px 22px rgba(15,23,42,0.14)",
   },
 
   secondaryButton: {
-    border: "1px solid #cbd5e1",
     borderRadius: 16,
     padding: "10px 14px",
-    background: "rgba(255,255,255,0.95)",
-    color: "#0f172a",
     fontWeight: 700,
     cursor: "pointer",
     display: "flex",
@@ -2343,18 +2385,13 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     borderRadius: 12,
     padding: "8px 10px",
-    background: "#0f172a",
-    color: "white",
     fontWeight: 700,
     cursor: "pointer",
   },
 
   secondarySmallButton: {
-    border: "1px solid #cbd5e1",
     borderRadius: 12,
     padding: "8px 10px",
-    background: "white",
-    color: "#0f172a",
     fontWeight: 700,
     cursor: "pointer",
   },
@@ -2367,25 +2404,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   tab: {
-    border: "1px solid #cbd5e1",
     borderRadius: 16,
     padding: "10px 14px",
-    background: "rgba(255,255,255,0.95)",
     cursor: "pointer",
     fontWeight: 700,
   },
 
-  tabActive: {
-    background: "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
-    color: "white",
-    borderColor: "#0f172a",
-  },
-
   addAquariumButton: {
-    border: "1px dashed #94a3b8",
     borderRadius: 16,
     padding: "10px 12px",
-    background: "white",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
@@ -2396,11 +2423,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "space-between",
     gap: 12,
-    background: "rgba(241,245,249,0.85)",
     borderRadius: 16,
     padding: "12px 14px",
     fontSize: 14,
-    border: "1px solid rgba(226,232,240,0.9)",
   },
 
   valueGrid: {
@@ -2410,15 +2435,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   valueCard: {
-    background: "rgba(255,255,255,0.95)",
     borderRadius: 16,
     padding: 12,
     boxShadow: "0 4px 14px rgba(15, 23, 42, 0.06)",
-    border: "1px solid #e2e8f0",
   },
 
   valueLabel: {
-    color: "#64748b",
     fontSize: 12,
     fontWeight: 700,
     textTransform: "uppercase",
@@ -2438,19 +2460,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   tipBox: {
-    border: "1px dashed #cbd5e1",
     borderRadius: 16,
     padding: 12,
-    color: "#334155",
-    background: "rgba(248,250,252,0.82)",
   },
 
   syncBox: {
-    border: "1px solid #cbd5e1",
     borderRadius: 16,
     padding: 12,
-    color: "#334155",
-    background: "#eef2ff",
     fontSize: 14,
   },
 
@@ -2463,7 +2479,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gap: 6,
     fontSize: 14,
-    color: "#334155",
     fontWeight: 700,
   },
 
@@ -2471,10 +2486,8 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     padding: "12px 12px",
     borderRadius: 14,
-    border: "1px solid #cbd5e1",
     fontSize: 14,
     boxSizing: "border-box",
-    background: "rgba(255,255,255,0.95)",
     outline: "none",
   },
 
@@ -2499,19 +2512,15 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: 10,
     alignItems: "center",
-    border: "1px solid #e2e8f0",
     borderRadius: 18,
     padding: 12,
-    background: "rgba(255,255,255,0.94)",
   },
 
   historyItemColumn: {
     display: "grid",
     gap: 10,
-    border: "1px solid #e2e8f0",
     borderRadius: 18,
     padding: 12,
-    background: "rgba(255,255,255,0.94)",
   },
 
   historyHeader: {
@@ -2530,25 +2539,18 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   emptyBox: {
-    border: "1px dashed #cbd5e1",
     borderRadius: 16,
     padding: 14,
-    color: "#64748b",
     fontSize: 14,
-    background: "rgba(255,255,255,0.6)",
   },
 
   taskRow: {
-    background: "rgba(255,255,255,0.95)",
     borderRadius: 12,
     padding: "9px 10px",
-    border: "1px solid #e2e8f0",
     fontSize: 14,
   },
 
   weekCard: {
-    background: "rgba(248,250,252,0.86)",
-    border: "1px solid #e2e8f0",
     borderRadius: 18,
     padding: 12,
     display: "grid",
@@ -2583,12 +2585,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   weekMeasureBox: {
-    background: "white",
     borderRadius: 10,
     padding: "8px 10px",
-    border: "1px solid #e2e8f0",
     fontSize: 12,
-    color: "#334155",
     lineHeight: 1.4,
   },
 
@@ -2597,9 +2596,7 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    background: "rgba(255,255,255,0.92)",
     backdropFilter: "blur(16px)",
-    borderTop: "1px solid #e2e8f0",
     display: "grid",
     gridTemplateColumns: "repeat(5, 1fr)",
     gap: 8,
@@ -2618,218 +2615,208 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 4,
     fontSize: 12,
-    color: "#475569",
-    fontWeight: 700,
-  },
-
-  bottomNavButtonActive: {
-    background: "#eef2ff",
-    color: "#0f172a",
-    fontWeight: 800,
   },
 
   splashOverlay: {
-  position: "fixed",
-  inset: 0,
-  zIndex: 3000,
-  overflow: "hidden",
-  background:
-    "radial-gradient(circle at 20% 15%, rgba(125,211,252,0.22), transparent 18%), radial-gradient(circle at 75% 25%, rgba(34,211,238,0.14), transparent 22%), linear-gradient(180deg, #03131f 0%, #06253a 28%, #0a4560 58%, #0f6b88 100%)",
-  animation: "fadeSplash 500ms ease",
-},
+    position: "fixed",
+    inset: 0,
+    zIndex: 3000,
+    overflow: "hidden",
+    background:
+      "radial-gradient(circle at 20% 15%, rgba(125,211,252,0.22), transparent 18%), radial-gradient(circle at 75% 25%, rgba(34,211,238,0.14), transparent 22%), linear-gradient(180deg, #03131f 0%, #06253a 28%, #0a4560 58%, #0f6b88 100%)",
+    animation: "fadeSplash 500ms ease",
+  },
 
   splashGlowA: {
-  position: "absolute",
-  width: 420,
-  height: 420,
-  borderRadius: "50%",
-  background: "rgba(56, 189, 248, 0.09)",
-  top: -90,
-  left: -90,
-  filter: "blur(30px)",
-  animation: "pulseGlow 6s ease-in-out infinite",
-},
+    position: "absolute",
+    width: 420,
+    height: 420,
+    borderRadius: "50%",
+    background: "rgba(56, 189, 248, 0.09)",
+    top: -90,
+    left: -90,
+    filter: "blur(30px)",
+    animation: "pulseGlow 6s ease-in-out infinite",
+  },
 
   splashGlowB: {
-  position: "absolute",
-  width: 380,
-  height: 380,
-  borderRadius: "50%",
-  background: "rgba(103, 232, 249, 0.08)",
-  bottom: -120,
-  right: -60,
-  filter: "blur(32px)",
-  animation: "pulseGlow 7s ease-in-out infinite",
-},
-
-  fishLane: {
-  position: "absolute",
-  inset: 0,
-},
-
-  splashFish: {
-  position: "absolute",
-  left: 0,
-  width: 46,
-  height: 22,
-  animationName: "swimAcross",
-  animationTimingFunction: "linear",
-  animationIterationCount: 1,
-},
-
-
-
-  bubbleLayer: {
-  position: "absolute",
-  inset: 0,
-  pointerEvents: "none",
-},
-
-  bubble: {
-  position: "absolute",
-  bottom: -30,
-  borderRadius: "50%",
-  background: "rgba(255,255,255,0.28)",
-  boxShadow: "0 0 10px rgba(255,255,255,0.1)",
-  animationName: "bubbleUp",
-  animationTimingFunction: "linear",
-  animationIterationCount: "infinite",
-},
-
-  splashCenter: {
-  position: "absolute",
-  left: "50%",
-  top: "54%",
-  transform: "translate(-50%, -50%)",
-  textAlign: "center",
-  padding: 24,
-  width: "min(92vw, 560px)",
-  animation: "centerFloat 4.5s ease-in-out infinite",
-},
-
-  splashBadge: {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "8px 14px",
-  borderRadius: 999,
-  background: "rgba(255,255,255,0.12)",
-  color: "#e0f2fe",
-  border: "1px solid rgba(255,255,255,0.16)",
-  fontSize: 12,
-  fontWeight: 800,
-  letterSpacing: "0.14em",
-  backdropFilter: "blur(8px)",
-},
-
-  splashTitle: {
-  margin: "18px 0 10px",
-  fontSize: "clamp(34px, 6vw, 58px)",
-  lineHeight: 1,
-  letterSpacing: "-0.045em",
-  color: "#f8fdff",
-  textShadow: "0 8px 30px rgba(0,0,0,0.18)",
-},
-
-  splashText: {
-  margin: 0,
-  color: "rgba(240,249,255,0.9)",
-  fontSize: 16,
-  lineHeight: 1.6,
-},
+    position: "absolute",
+    width: 380,
+    height: 380,
+    borderRadius: "50%",
+    background: "rgba(103, 232, 249, 0.08)",
+    bottom: -120,
+    right: -60,
+    filter: "blur(32px)",
+    animation: "pulseGlow 7s ease-in-out infinite",
+  },
 
   splashGlowC: {
-  position: "absolute",
-  width: 260,
-  height: 260,
-  borderRadius: "50%",
-  background: "rgba(186, 230, 253, 0.08)",
-  top: "28%",
-  left: "50%",
-  transform: "translateX(-50%)",
-  filter: "blur(40px)",
-  animation: "pulseGlow 8s ease-in-out infinite",
-},
+    position: "absolute",
+    width: 260,
+    height: 260,
+    borderRadius: "50%",
+    background: "rgba(186, 230, 253, 0.08)",
+    top: "28%",
+    left: "50%",
+    transform: "translateX(-50%)",
+    filter: "blur(40px)",
+    animation: "pulseGlow 8s ease-in-out infinite",
+  },
 
   splashWaterGradientTop: {
-  position: "absolute",
-  inset: 0,
-  background:
-    "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 30%)",
-  pointerEvents: "none",
-},
+    position: "absolute",
+    inset: 0,
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 30%)",
+    pointerEvents: "none",
+  },
 
   splashWaterGradientBottom: {
-  position: "absolute",
-  left: 0,
-  right: 0,
-  bottom: 0,
-  height: "28%",
-  background:
-    "linear-gradient(180deg, rgba(4, 47, 66, 0) 0%, rgba(3, 31, 46, 0.34) 100%)",
-  pointerEvents: "none",
-},
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "28%",
+    background:
+      "linear-gradient(180deg, rgba(4, 47, 66, 0) 0%, rgba(3, 31, 46, 0.34) 100%)",
+    pointerEvents: "none",
+  },
+
+  fishLane: {
+    position: "absolute",
+    inset: 0,
+  },
+
+  splashFish: {
+    position: "absolute",
+    left: 0,
+    width: 46,
+    height: 22,
+    animationName: "swimAcross",
+    animationTimingFunction: "linear",
+    animationIterationCount: 1,
+  },
 
   splashFishInner: {
-  position: "relative",
-  width: 46,
-  height: 22,
-  animation: "fishWiggle 1.6s ease-in-out infinite",
-  transformOrigin: "center center",
-},
+    position: "relative",
+    width: 46,
+    height: 22,
+    animation: "fishWiggle 1.6s ease-in-out infinite",
+    transformOrigin: "center center",
+  },
 
   splashFishBody: {
-  position: "absolute",
-  left: 10,
-  top: 4,
-  width: 24,
-  height: 14,
-  borderRadius: "55% 60% 60% 55%",
-  background:
-    "linear-gradient(90deg, rgba(224,242,254,0.95) 0%, rgba(125,211,252,0.86) 52%, rgba(34,211,238,0.74) 100%)",
-  boxShadow: "0 0 12px rgba(125,211,252,0.18)",
-},
+    position: "absolute",
+    left: 10,
+    top: 4,
+    width: 24,
+    height: 14,
+    borderRadius: "55% 60% 60% 55%",
+    background:
+      "linear-gradient(90deg, rgba(224,242,254,0.95) 0%, rgba(125,211,252,0.86) 52%, rgba(34,211,238,0.74) 100%)",
+    boxShadow: "0 0 12px rgba(125,211,252,0.18)",
+  },
 
   splashFishTail: {
-  position: "absolute",
-  left: 0,
-  top: 6,
-  width: 0,
-  height: 0,
-  borderTop: "5px solid transparent",
-  borderBottom: "5px solid transparent",
-  borderRight: "10px solid rgba(103,232,249,0.72)",
-},
+    position: "absolute",
+    left: 0,
+    top: 6,
+    width: 0,
+    height: 0,
+    borderTop: "5px solid transparent",
+    borderBottom: "5px solid transparent",
+    borderRight: "10px solid rgba(103,232,249,0.72)",
+  },
 
   splashFishFinTop: {
-  position: "absolute",
-  left: 18,
-  top: 1,
-  width: 0,
-  height: 0,
-  borderLeft: "4px solid transparent",
-  borderRight: "4px solid transparent",
-  borderBottom: "7px solid rgba(186,230,253,0.55)",
-},
+    position: "absolute",
+    left: 18,
+    top: 1,
+    width: 0,
+    height: 0,
+    borderLeft: "4px solid transparent",
+    borderRight: "4px solid transparent",
+    borderBottom: "7px solid rgba(186,230,253,0.55)",
+  },
 
   splashFishFinBottom: {
-  position: "absolute",
-  left: 18,
-  top: 13,
-  width: 0,
-  height: 0,
-  borderLeft: "4px solid transparent",
-  borderRight: "4px solid transparent",
-  borderTop: "7px solid rgba(186,230,253,0.4)",
-},
+    position: "absolute",
+    left: 18,
+    top: 13,
+    width: 0,
+    height: 0,
+    borderLeft: "4px solid transparent",
+    borderRight: "4px solid transparent",
+    borderTop: "7px solid rgba(186,230,253,0.4)",
+  },
 
   splashFishEye: {
-  position: "absolute",
-  left: 28,
-  top: 9,
-  width: 2.5,
-  height: 2.5,
-  borderRadius: "50%",
-  background: "rgba(15,23,42,0.75)",
-},
+    position: "absolute",
+    left: 28,
+    top: 9,
+    width: 2.5,
+    height: 2.5,
+    borderRadius: "50%",
+    background: "rgba(15,23,42,0.75)",
+  },
+
+  bubbleLayer: {
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
+  },
+
+  bubble: {
+    position: "absolute",
+    bottom: -30,
+    borderRadius: "50%",
+    background: "rgba(255,255,255,0.28)",
+    boxShadow: "0 0 10px rgba(255,255,255,0.1)",
+    animationName: "bubbleUp",
+    animationTimingFunction: "linear",
+    animationIterationCount: "infinite",
+  },
+
+  splashCenter: {
+    position: "absolute",
+    left: "50%",
+    top: "54%",
+    transform: "translate(-50%, -50%)",
+    textAlign: "center",
+    padding: 24,
+    width: "min(92vw, 560px)",
+    animation: "centerFloat 4.5s ease-in-out infinite",
+  },
+
+  splashBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "8px 14px",
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.12)",
+    color: "#e0f2fe",
+    border: "1px solid rgba(255,255,255,0.16)",
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: "0.14em",
+    backdropFilter: "blur(8px)",
+  },
+
+  splashTitle: {
+    margin: "18px 0 10px",
+    fontSize: "clamp(34px, 6vw, 58px)",
+    lineHeight: 1,
+    letterSpacing: "-0.045em",
+    color: "#f8fdff",
+    textShadow: "0 8px 30px rgba(0,0,0,0.18)",
+  },
+
+  splashText: {
+    margin: 0,
+    color: "rgba(240,249,255,0.9)",
+    fontSize: 16,
+    lineHeight: 1.6,
+  },
 };
