@@ -894,7 +894,18 @@ export default function App() {
   function renderDashboard() {
     return (
       <div style={styles.screenGrid}>
-        <section style={styles.heroCard}>
+        <section
+  style={{
+    ...styles.heroCard,
+    background: darkMode
+      ? "linear-gradient(135deg, rgba(14,165,233,0.16) 0%, rgba(34,197,94,0.05) 100%), rgba(15,23,42,0.88)"
+      : styles.heroCard.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.heroCard.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.heroTop}>
             <div>
               <div style={styles.eyebrow}>Heute im Fokus</div>
@@ -950,7 +961,16 @@ export default function App() {
           </div>
         </section>
 
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Dashboard
           </div>
@@ -985,7 +1005,16 @@ export default function App() {
           </div>
         </section>
 
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.cardTitle}>
             <Droplets size={18} /> Letzte Werte
           </div>
@@ -1026,7 +1055,16 @@ export default function App() {
           </div>
         </section>
 
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.cardTitle}>
             <LineChartIcon size={18} /> Überblick
           </div>
@@ -1060,7 +1098,16 @@ export default function App() {
   function renderFertilizer() {
     return (
       <div style={styles.screenGrid}>
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.cardTitle}>
             <FlaskConical size={18} /> Standard-Dosierung
           </div>
@@ -1074,7 +1121,14 @@ export default function App() {
             <label style={styles.label}>
               Ferropol
               <input
-                style={styles.input}
+                style={{
+  ...styles.input,
+  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
+  color: darkMode ? "#e2e8f0" : "#0f172a",
+  border: darkMode
+    ? "1px solid rgba(148,163,184,0.22)"
+    : "1px solid #cbd5e1",
+}}
                 placeholder="z. B. 10 ml"
                 value={activeDose.ferropol}
                 onChange={(e) => updateDose("ferropol", e.target.value)}
@@ -1084,7 +1138,14 @@ export default function App() {
             <label style={styles.label}>
               NPK
               <input
-                style={styles.input}
+                style={{
+  ...styles.input,
+  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
+  color: darkMode ? "#e2e8f0" : "#0f172a",
+  border: darkMode
+    ? "1px solid rgba(148,163,184,0.22)"
+    : "1px solid #cbd5e1",
+}}
                 placeholder="z. B. 8 ml"
                 value={activeDose.npk}
                 onChange={(e) => updateDose("npk", e.target.value)}
@@ -1094,7 +1155,14 @@ export default function App() {
             <label style={styles.label}>
               Tagesdünger
               <input
-                style={styles.input}
+                style={{
+  ...styles.input,
+  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
+  color: darkMode ? "#e2e8f0" : "#0f172a",
+  border: darkMode
+    ? "1px solid rgba(148,163,184,0.22)"
+    : "1px solid #cbd5e1",
+}}
                 placeholder="z. B. 5 ml"
                 value={activeDose.tages}
                 onChange={(e) => updateDose("tages", e.target.value)}
@@ -1103,7 +1171,16 @@ export default function App() {
           </div>
         </section>
 
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.sectionHead}>
             <div style={styles.cardTitle}>
               <FlaskConical size={18} /> Dünger eintragen
@@ -1114,7 +1191,14 @@ export default function App() {
             <label style={styles.label}>
               Datum
               <input
-                style={styles.input}
+                style={{
+  ...styles.input,
+  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
+  color: darkMode ? "#e2e8f0" : "#0f172a",
+  border: darkMode
+    ? "1px solid rgba(148,163,184,0.22)"
+    : "1px solid #cbd5e1",
+}}
                 type="date"
                 value={fertilizerForm.date}
                 onChange={(e) =>
@@ -1129,7 +1213,14 @@ export default function App() {
             <label style={styles.label}>
               Dünger
               <select
-                style={styles.input}
+                style={{
+  ...styles.input,
+  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
+  color: darkMode ? "#e2e8f0" : "#0f172a",
+  border: darkMode
+    ? "1px solid rgba(148,163,184,0.22)"
+    : "1px solid #cbd5e1",
+}}
                 value={fertilizerForm.fertilizer}
                 onChange={(e) =>
                   setFertilizerForm({
@@ -1147,7 +1238,14 @@ export default function App() {
             <label style={styles.label}>
               Menge
               <input
-                style={styles.input}
+                style={{
+  ...styles.input,
+  background: darkMode ? "#0f172a" : "rgba(255,255,255,0.95)",
+  color: darkMode ? "#e2e8f0" : "#0f172a",
+  border: darkMode
+    ? "1px solid rgba(148,163,184,0.22)"
+    : "1px solid #cbd5e1",
+}}
                 placeholder="z. B. 5 ml"
                 value={fertilizerForm.amount}
                 onChange={(e) =>
@@ -1196,7 +1294,16 @@ export default function App() {
   function renderWater() {
     return (
       <div style={styles.screenGrid}>
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.sectionHead}>
             <div style={styles.cardTitle}>
               <Droplets size={18} /> Wasserwerte eintragen
@@ -1315,7 +1422,16 @@ export default function App() {
   function renderHistory() {
     return (
       <div style={styles.screenGrid}>
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Wochenübersicht
           </div>
@@ -1364,7 +1480,16 @@ export default function App() {
           </div>
         </section>
 
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.cardTitle}>
             <CalendarDays size={18} /> Verlauf & Historie
           </div>
@@ -1472,7 +1597,16 @@ export default function App() {
   function renderChart() {
     return (
       <div style={styles.screenGrid}>
-        <section style={styles.card}>
+        <section
+  style={{
+    ...styles.card,
+    background: darkMode ? "rgba(15,23,42,0.82)" : styles.card.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : styles.card.border,
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+  }}
+>
           <div style={styles.sectionHead}>
             <div style={styles.cardTitle}>
               <LineChartIcon size={18} /> Wasserwerte-Verlauf
@@ -1706,14 +1840,24 @@ export default function App() {
   style={{
     ...styles.page,
     background: darkMode ? "#020617" : "#f8fafc",
-    color: darkMode ? "#e2e8f0" : "#0f172a",
+    color: "#0f172a",
   }}
 >
         <div style={styles.containerWithBottomNav}>
-          <div style={styles.topBar}>
+          <div
+  style={{
+    ...styles.topBar,
+    background: darkMode ? "rgba(15,23,42,0.9)" : styles.topBar.background,
+    border: darkMode
+      ? "1px solid rgba(148,163,184,0.18)"
+      : styles.topBar.border,
+  }}
+>
             <div style={{ maxWidth: 720 }}>
-              <h1 style={styles.h1}>Aquarium Logbuch</h1>
-              <p style={styles.sub}>
+              <h1 style={{ ...styles.h1, color: darkMode ? "#e2e8f0" : "#0f172a" }}>
+  Aquarium Logbuch
+</h1>
+              <p style={{ ...styles.sub, color: darkMode ? "#94a3b8" : "#475569" }}>
                 Ruhiges, modernes Pflege-Log für Dünger, Wasserwerte,
                 Wasserwechsel und Verlauf.
               </p>
@@ -1767,15 +1911,48 @@ export default function App() {
                     key={aq.id}
                     onClick={() => setSelectedAquarium(aq.id)}
                     style={{
-                      ...styles.tab,
-                      ...(selectedAquarium === aq.id ? styles.tabActive : {}),
-                    }}
+  ...styles.tab,
+  background:
+    selectedAquarium === aq.id
+      ? darkMode
+        ? "#38bdf8"
+        : styles.tabActive.background
+      : darkMode
+      ? "#0f172a"
+      : "white",
+  color:
+    selectedAquarium === aq.id
+      ? darkMode
+        ? "#082f49"
+        : "white"
+      : darkMode
+      ? "#e2e8f0"
+      : "#0f172a",
+  border:
+    selectedAquarium === aq.id
+      ? darkMode
+        ? "1px solid #38bdf8"
+        : styles.tabActive.borderColor
+      : darkMode
+      ? "1px solid rgba(148,163,184,0.18)"
+      : "1px solid #cbd5e1",
+}}
                   >
                     {aq.name}
                   </button>
                 ))}
 
-                <button style={styles.addAquariumButton} onClick={addAquarium}>
+                <button
+  style={{
+    ...styles.addAquariumButton,
+    background: darkMode ? "#0f172a" : "white",
+    color: darkMode ? "#e2e8f0" : "#0f172a",
+    border: darkMode
+      ? "1px dashed rgba(148,163,184,0.35)"
+      : "1px dashed #94a3b8",
+  }}
+  onClick={addAquarium}
+>
                   <Plus size={16} />
                 </button>
               </div>
@@ -1814,12 +1991,32 @@ export default function App() {
           {activeTab === "chart" && renderChart()}
         </div>
 
-        <div style={styles.bottomNav}>
+        <div
+  style={{
+    ...styles.bottomNav,
+    background: darkMode ? "rgba(2,6,23,0.96)" : styles.bottomNav.background,
+    borderTop: darkMode
+      ? "1px solid rgba(148,163,184,0.14)"
+      : "1px solid #e2e8f0",
+  }}
+>
           <button
             style={{
-              ...styles.bottomNavButton,
-              ...(activeTab === "dashboard" ? styles.bottomNavButtonActive : {}),
-            }}
+  ...styles.bottomNavButton,
+  color: darkMode ? "#cbd5e1" : "#475569",
+  background:
+    activeTab === "dashboard"
+      ? darkMode
+        ? "#0f172a"
+        : "#eef2ff"
+      : "transparent",
+  ...(activeTab === "dashboard"
+    ? {
+        color: darkMode ? "#38bdf8" : "#0f172a",
+        fontWeight: 800,
+      }
+    : {}),
+}}
             onClick={() => setActiveTab("dashboard")}
           >
             <CalendarDays size={18} />
